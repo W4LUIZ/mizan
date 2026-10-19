@@ -301,6 +301,7 @@ function render() {
   if (S.ui.recovery) { app.innerHTML = renderRecovery(); renderSheet(); return; }
   if (S.ui.phase === 'loading') { app.innerHTML = '<div class="loading">Loading Mizan…</div>'; return; }
   if (S.ui.phase === 'error') { app.innerHTML = renderBootError(); return; }
+  if (S.ui.phase === 'notice') { app.innerHTML = renderNotice(); return; }
   if (S.ui.phase === 'auth') { app.innerHTML = renderAuth(); renderSheet(); return; }
   if (S.ui.phase === 'household') { app.innerHTML = renderHousehold(); renderSheet(); return; }
   if (!profile() || S.ui.editing) { app.innerHTML = renderSetup(); renderSheet(); return; }
@@ -329,7 +330,7 @@ function renderToday() {
   const dd = dayData(k);
   const workouts = dd.workouts.map((w) => `<button class="item" data-act="editWorkout" data-id="${w.id}">
       <span class="add-btn" style="background:var(--soft)">${icon('pulse', 20)}</span>
-      <span class="grow"><span class="name">${esc(w.type)}${w.km ? ' · ' + r1(w.km) + ' km' : ''}</span><span class="sub">${w.min ? r0(w.min) + ' min' : ''}${w.watch ? ' · watch ' + fmt(w.watch) + ' kcal' : ' · estimated'}</span></span>
+      <span class="grow"><span class="name">${esc(w.type)}${w.km ? ' · ' + r1(w.km) + ' km' : ''}</span><span class="sub">${w.src === 'strava' ? 'Strava · ' : ''}${w.min ? r0(w.min) + ' min' : ''}${w.watch ? ' · ' + fmt(w.watch) + ' kcal on watch' : ' · estimated'}</span></span>
       <span class="num" style="color:var(--acc)">+${fmt(w.credit)}</span></button>`).join('');
   const w = S.core.weights[k];
   const meals = mealsList().map((m) => {
@@ -528,7 +529,7 @@ function renderSettings() {
     <div class="list"><div class="item"><span class="grow"><b>Colour</b><span class="sub wrap">Light or dark follows your phone</span></span>
       <div class="row" style="gap:12px">${[['purple', '#A78BFA'], ['green', '#4ADE80'], ['blue', '#7DD3FC']].map(([n, c]) => `<button class="swatch" style="background:${c}" data-act="accent" data-a="${n}" aria-pressed="${st.accent === n}" aria-label="${n}"></button>`).join('')}</div></div></div>
     <div class="eyebrow">Connections</div>
-    <div class="list"><div class="item"><span class="grow"><b>Strava / Fitbit</b><span class="sub wrap">Automatic workout syncing arrives in Phase 3. Add workouts by hand on the Today screen for now.</span></span></div></div>
+    ${renderStravaSettings()}
     <div class="eyebrow">Reminders</div>
     <div class="list"><div class="item"><span class="grow"><b>Weigh-in, meal and check-in reminders</b><span class="sub wrap">Phone notifications arrive in Phase 4, once Mizan is installed on your home screen.</span></span></div></div>
     <div class="eyebrow">Household</div>
@@ -543,7 +544,7 @@ function renderSettings() {
       <div class="item"><span class="grow"><b>Saved</b><span class="sub wrap">Your logs, weight and targets are private to you. Foods and recipes are shared with your household.</span></span></div>
       ${row('Export log as spreadsheet (CSV)', '', 'exportCsv')}${row('Download full backup', '', 'exportBackup')}
       <label class="item" style="cursor:pointer"><span class="grow" style="font-weight:700">Restore from backup</span><input type="file" accept="application/json,.json" data-in="restore" style="display:none"><span class="muted">${icon('right', 18)}</span></label></div>
-    <p class="note">Mizan · ${Object.keys(STARTER).length} starter foods, based on USDA FoodData Central.</p>
+    <p class="note">Mizan · Phase 3 · ${Object.keys(STARTER).length} starter foods, based on USDA FoodData Central.</p>
   </main>`;
 }
 
@@ -878,6 +879,7 @@ function ingResults(s) {
 function sheetWorkout(s) {
   const d = s.d; const credit = workoutCredit(d.type, num(d.min), num(d.km), num(d.watch));
   return `${sheetTop(s.id ? 'Edit workout' : 'Add workout', longDate(S.ui.day))}
+    ${s.src === 'strava' ? `<p class="note" style="margin:0">Synced from Strava${s.name ? ': “' + esc(s.name) + '”' : ''}. You can change the type, for example to Lagree.</p>` : ''}
     <div class="chips" style="flex-wrap:wrap">${WORKOUTS.map((w) => `<button class="chip" data-act="woType" data-v="${w.id}" aria-pressed="${d.type === w.id}">${w.id}</button>`).join('')}</div>
     <div class="grid2"><label class="f">Duration (min)<input class="input" id="wo-min" data-in="woF" data-f="min" inputmode="numeric" value="${esc(d.min)}"></label>
     ${d.type === 'Run' || d.type === 'Walk' || d.type === 'Cycling' ? `<label class="f">Distance (km)<input class="input" id="wo-km" data-in="woF" data-f="km" inputmode="decimal" value="${esc(d.km)}"></label>` : '<span></span>'}</div>
@@ -1061,12 +1063,12 @@ const A = {
   reDelete() { const s = topSheet(); delete S.recipes[s.id]; Store.recipe(s.id, true); toast('Recipe deleted'); popSheet(); },
   // workouts
   addWorkout() { const p = profile(); pushSheet({ type: 'workout', id: null, d: { type: (p.training && p.training[0]) || 'Run', min: '', km: '', watch: '' } }); },
-  editWorkout(d) { const w = dayData(S.ui.day).workouts.find((x) => x.id === d.id); if (!w) return; pushSheet({ type: 'workout', id: w.id, d: { type: w.type, min: w.min || '', km: w.km || '', watch: w.watch || '' } }); },
+  editWorkout(d) { const w = dayData(S.ui.day).workouts.find((x) => x.id === d.id); if (!w) return; pushSheet({ type: 'workout', id: w.id, src: w.src, name: w.name, d: { type: w.type, min: w.min || '', km: w.km || '', watch: w.watch || '' } }); },
   woType(d) { topSheet().d.type = d.v; renderSheet(); },
   woSave() {
     const s = topSheet(); const d = s.d; const dd = dayData(S.ui.day, true);
     const w = { id: s.id || uid(), type: d.type, min: num(d.min), km: num(d.km), watch: num(d.watch), credit: workoutCredit(d.type, num(d.min), num(d.km), num(d.watch)) };
-    if (s.id) { const i = dd.workouts.findIndex((x) => x.id === s.id); dd.workouts[i] = w; } else dd.workouts.push(w);
+    if (s.id) { const i = dd.workouts.findIndex((x) => x.id === s.id); dd.workouts[i] = Object.assign({}, dd.workouts[i], w); } else dd.workouts.push(w);
     saveDay(S.ui.day); toast(`+${fmt(w.credit)} kcal added`); closeSheets();
   },
   woDelete() { const s = topSheet(); const dd = dayData(S.ui.day, true); dd.workouts = dd.workouts.filter((w) => w.id !== s.id); saveDay(S.ui.day); toast('Workout deleted'); closeSheets(); },
@@ -1137,6 +1139,21 @@ const A = {
     S.ui.phase = 'auth'; render(); window.scrollTo(0, 0);
   },
   retryBoot() { boot(); },
+  async stravaConnect() {
+    const res = await callStrava('start', { redirect: location.origin + location.pathname });
+    if (res.error) { toast(res.error); return; }
+    S.core.strava = Object.assign({ seen: [] }, S.core.strava, { pending: true }); save('core'); await Store.flush();
+    location.href = res.url;
+  },
+  stravaSync() { stravaSync(true); },
+  async stravaDisconnect() {
+    if (!S.ui.confirmDisconnect) { S.ui.confirmDisconnect = true; render(); setTimeout(() => { S.ui.confirmDisconnect = false; }, 6000); return; }
+    S.ui.confirmDisconnect = false;
+    const res = await callStrava('disconnect');
+    if (res.error) { toast(res.error); return; }
+    S.core.strava = { connected: false, seen: (S.core.strava && S.core.strava.seen) || [] }; save('core'); render(); toast('Strava disconnected');
+  },
+  noticeContinue() { S.ui.notice = null; boot(); },
   // setup
   setPick(d) { const x = S.ui.setup; x[d.f] = d.f === 'pace' || d.f === 'mealsCount' ? num(d.v) : d.f === 'pregnant' ? d.v === 'true' : d.v; delete x.__t; rerenderSetup(); },
   setTrain(d) { const x = S.ui.setup; const i = x.training.indexOf(d.v); if (i >= 0) x.training.splice(i, 1); else x.training.push(d.v); rerenderSetup(); },
@@ -1235,7 +1252,7 @@ document.addEventListener('change', (ev) => { if (ev.target.id === 'fe-sg') setT
 window.addEventListener('pagehide', () => { if (Store.pending()) Store.flush(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (Store.pending()) Store.flush(); return; }
-  if (S.ui.phase === 'app' && Store.hh && !Store.pending()) Store.loadAll().then(softRender, () => {});
+  if (S.ui.phase === 'app' && Store.hh && !Store.pending()) Store.loadAll().then(() => { softRender(); stravaAuto(); }, () => {});
 });
 
 document.addEventListener('submit', async (ev) => {
@@ -1282,10 +1299,109 @@ async function enterApp() {
   if (!Store.hh) { S.ui.phase = 'household'; render(); return; }
   await Store.loadAll();
   S.ui.phase = 'app'; S.ui.view = 'today'; render(); window.scrollTo(0, 0);
+  stravaAuto();
 }
 async function afterSignIn() {
   try { await enterApp(); }
   catch (e) { S.ui.phase = 'error'; S.ui.bootError = authError(e); render(); }
+}
+
+// ---------------------------------------------------------------- Strava
+const STRAVA_TYPES = { Run: 'Run', TrailRun: 'Run', VirtualRun: 'Run', Walk: 'Walk', Hike: 'Walk', Ride: 'Cycling', VirtualRide: 'Cycling', EBikeRide: 'Cycling',
+  MountainBikeRide: 'Cycling', GravelRide: 'Cycling', EMountainBikeRide: 'Cycling', Swim: 'Swim', WeightTraining: 'Gym', Crossfit: 'Gym', Workout: 'Gym',
+  HighIntensityIntervalTraining: 'HIIT', Pilates: 'Pilates', Padel: 'Padel', Tennis: 'Padel', Squash: 'Padel', Badminton: 'Padel', Pickleball: 'Padel' };
+function stravaType(a) {
+  const n = (a.name || '').toLowerCase();
+  if (/lagree|megaformer/.test(n)) return 'Lagree';
+  if (/pilates|reformer/.test(n)) return 'Pilates';
+  if (/padel/.test(n)) return 'Padel';
+  return STRAVA_TYPES[a.type] || 'Other';
+}
+async function callStrava(action, extra) {
+  try {
+    const { data, error } = await Store.sb.functions.invoke('strava', { body: Object.assign({ action }, extra || {}) });
+    if (error) {
+      let msg = error.message || 'Could not reach Strava.';
+      try { const b = await error.context.json(); if (b && b.error) msg = b.error; } catch (e) { /* keep message */ }
+      return { error: msg };
+    }
+    return data || {};
+  } catch (e) { return { error: 'No connection. Try again in a moment.' }; }
+}
+function renderStravaSettings() {
+  const st = S.core.strava || {};
+  const last = st.lastSync ? new Date(st.lastSync * 1000) : null;
+  const when = last ? (dkey(last) === today() ? 'today ' : longDate(dkey(last)).split(',')[0] + ' ') + pad(last.getHours()) + ':' + pad(last.getMinutes()) : '';
+  if (st.connected) {
+    return `<div class="list">
+      <div class="item"><span class="grow"><b>Strava</b><span class="sub wrap">Connected${st.athlete ? ' as ' + esc(st.athlete) : ''}${when ? ' · last synced ' + when : ''}. New workouts come in each time you open Mizan.</span></span>
+        <button class="pill" data-act="stravaSync">${S.stravaBusy ? 'Syncing…' : 'Sync now'}</button></div>
+      <div class="item"><span class="grow"><span class="sub wrap">Workouts already brought in stay in your log if you disconnect.</span></span>
+        <button class="pill" data-act="stravaDisconnect" style="background:transparent;color:var(--bad);border:1px solid var(--line)">${S.ui.confirmDisconnect ? 'Tap again to disconnect' : 'Disconnect'}</button></div></div>`;
+  }
+  return `<div class="list">
+    <div class="item"><span class="grow"><b>Strava</b><span class="sub wrap">Bring in runs, gym, Pilates and other workouts automatically, with the calories from your watch.</span></span>
+      <button class="pill" data-act="stravaConnect" style="background:var(--acc);color:var(--on)">Connect</button></div>
+    <div class="item"><span class="grow"><span class="sub wrap">Wearing a Fitbit? In the Google Health app, open Connections, choose Strava and turn sharing on. Then connect Strava here.</span></span></div></div>`;
+}
+function renderNotice() {
+  const n = S.ui.notice || {};
+  return `<main class="screen" style="padding-top:calc(40px + env(safe-area-inset-top, 0px));max-width:420px;margin:0 auto">${LOGO}
+    <h1>${esc(n.title || 'Mizan')}</h1><p class="note">${esc(n.text || '')}</p>
+    <button class="btn" data-act="noticeContinue">Continue to Mizan</button></main>`;
+}
+async function handleStravaReturn() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('state') || !(q.has('code') || q.has('error'))) return false;
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+  let title = 'Strava connected', text = 'Your workouts will now come into Mizan automatically. If you came here from the Mizan app on your home screen, you can close this page and go back to it.';
+  if (q.get('error')) { title = 'Strava not connected'; text = 'The connection was cancelled. You can try again from Settings.'; }
+  else if (!(q.get('scope') || '').includes('activity:read')) { title = 'Permission needed'; text = 'Mizan needs permission to view your activities. Tap Connect Strava again and leave the activity boxes ticked.'; }
+  else {
+    const res = await callStrava('exchange', { code: q.get('code'), state: q.get('state') });
+    if (res.error) { title = 'Strava not connected'; text = res.error; }
+  }
+  S.ui.notice = { title, text }; S.ui.phase = 'notice'; render();
+  return true;
+}
+function stravaAuto() {
+  const st = S.core.strava; if (!st || !(st.connected || st.pending)) return;
+  if (st.connected && st.lastSync && Date.now() / 1000 - st.lastSync < 600) return;
+  stravaSync(false);
+}
+async function stravaSync(manual) {
+  if (S.stravaBusy || !Store.user) return;
+  const st = S.core.strava = Object.assign({ seen: [] }, S.core.strava);
+  S.stravaBusy = true; if (manual && S.ui.view === 'settings') softRender();
+  try {
+    const after = st.lastSync ? st.lastSync - 3 * 86400 : Math.floor(Date.now() / 1000) - 14 * 86400;
+    const res = await callStrava('sync', { after, skip: st.seen.slice(-300) });
+    if (res.error) { if (manual) toast(res.error); return; }
+    if (!res.connected) {
+      if (st.connected || st.pending) { st.connected = false; st.pending = false; save('core'); softRender(); }
+      if (manual) toast('Strava is not connected');
+      return;
+    }
+    const firstTime = !st.connected;
+    st.connected = true; st.pending = false; st.athlete = res.athlete || st.athlete;
+    let added = 0; const touched = new Set();
+    (res.activities || []).forEach((a) => {
+      if (st.seen.includes(a.id)) return;
+      st.seen.push(a.id);
+      const k = String(a.start || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+      const dd = dayData(k, true); if (dd.workouts.some((w) => w.sid === a.id)) return;
+      const type = stravaType(a); const min = Math.round((a.moving || a.elapsed || 0) / 60);
+      const km = a.distance > 0 && ['Run', 'Walk', 'Cycling', 'Swim'].includes(type) ? r1(a.distance / 1000) : 0;
+      const watch = a.calories ? Math.round(a.calories) : a.kilojoules ? Math.round(a.kilojoules) : 0;
+      dd.workouts.push({ id: uid(), sid: a.id, src: 'strava', name: a.name || '', type, min, km, watch, credit: workoutCredit(type, min, km, watch) });
+      touched.add(k); added++;
+    });
+    st.seen = st.seen.slice(-400); st.lastSync = Math.floor(Date.now() / 1000);
+    save('core'); touched.forEach((k) => saveDay(k));
+    if (firstTime) toast('Strava connected' + (added ? ` · ${added} workout${added > 1 ? 's' : ''} from the last 2 weeks` : ''));
+    else if (added) toast(`${added} workout${added > 1 ? 's' : ''} synced from Strava`);
+    else if (manual) toast('Up to date with Strava');
+  } finally { S.stravaBusy = false; softRender(); }
 }
 
 // ---------------------------------------------------------------- boot
@@ -1299,6 +1415,7 @@ async function boot() {
     Store.sb.auth.onAuthStateChange((event) => { if (event === 'PASSWORD_RECOVERY') { S.ui.recovery = true; S.ui.auth.msg = ''; render(); } });
   }
   S.ui.phase = 'loading'; render();
+  if (await handleStravaReturn()) return;
   let user = null;
   try { user = await Store.session(); } catch (e) { user = null; }
   if (!user) { S.ui.phase = 'auth'; render(); return; }
@@ -1306,7 +1423,7 @@ async function boot() {
     S.ui.phase = 'app'; render();
     Store.loadHousehold().then((hh) => {
       if (!hh) { Store.clearCache(); S.ui.phase = 'household'; render(); return; }
-      return Store.loadAll().then(softRender);
+      return Store.loadAll().then(() => { softRender(); stravaAuto(); });
     }).catch(() => syncState(true));
     return;
   }
