@@ -229,5 +229,24 @@ window.MIZAN_FOODS = [
   ["shakshuka", "Shakshuka", "Dishes", null, [110, 6, 6, 7], null, [["1 serving", 250]], "typical"],
   ["lentil-soup", "Lentil soup", "Dishes", null, [70, 4, 11, 1.5], null, [["1 bowl", 300]], "typical"],
   ["fattoush", "Fattoush", "Dishes", null, [90, 2, 10, 5], null, [["1 bowl", 200]], "typical"],
-  ["tabbouleh", "Tabbouleh", "Dishes", null, [120, 2.5, 12, 7.5], null, [["1 bowl", 150]], "typical"]
+  ["tabbouleh", "Tabbouleh", "Dishes", null, [120, 2.5, 12, 7.5], null, [["1 bowl", 150]], "typical"],
+  // ---------- Protein powders and bars ----------
+  ["hsa-beef-pineapple", "HSA Beef Protein Isolate, Pineapple", "Supplements", null, [366.7, 90.0, 0.9, 0.0], null, [["1 scoop", 30]]],
+  ["nxt-beef-lemonlime", "NXT Beef Protein Isolate, Lemon Lime", "Supplements", null, [366.7, 90.0, 0.8, 0.0], null, [["1 scoop", 30]]],
+  ["nxt-beef-pineapple", "NXT Beef Protein Isolate, Pineapple", "Supplements", null, [366.7, 90.0, 0.8, 0.0], null, [["1 scoop", 30]]],
+  ["grenade-cookies-cream", "Grenade bar, Cookies & Cream", "Supplements", null, [361.7, 38.8, 22.7, 13.7], null, [["1 bar", 60]]],
+  ["grenade-white-choc-cookie", "Grenade bar, White Chocolate Cookie", "Supplements", null, [351.7, 36.7, 33.3, 12.7], null, [["1 bar", 60]]],
+  ["grenade-caramel-chaos", "Grenade bar, Caramel Chaos", "Supplements", null, [338.3, 35.0, 35.0, 11.5], null, [["1 bar", 60]]],
+  ["grenade-salted-caramel", "Grenade bar, Chocolate Chip Salted Caramel", "Supplements", null, [383.3, 33.3, 35.0, 16.7], null, [["1 bar", 60]]],
+  ["grenade-birthday-cake", "Grenade bar, Birthday Cake", "Supplements", null, [366.7, 35.0, 24.8, 14.2], null, [["1 bar", 60]], "typical"],
+  ["grenade-fudge-brownie", "Grenade bar, Fudge Brownie", "Supplements", null, [391.7, 35.0, 27.3, 15.8], null, [["1 bar", 60]], "typical"],
+  ["grenade-cookie-dough", "Grenade bar, Cookie Dough", "Supplements", null, [363.3, 35.0, 24.0, 14.2], null, [["1 bar", 60]], "typical"],
+  ["grenade-dark-choc-raspberry", "Grenade bar, Dark Chocolate Raspberry", "Supplements", null, [363.3, 35.0, 24.0, 14.2], null, [["1 bar", 60]], "typical"],
+  ["grenade-white-choc-peanut", "Grenade bar, White Chocolate Salted Peanut", "Supplements", null, [403.3, 35.0, 24.7, 18.3], null, [["1 bar", 60]], "typical"],
+  ["grenade-oreo", "Grenade bar, Oreo", "Supplements", null, [383.3, 35.0, 27.0, 15.0], null, [["1 bar", 60]], "typical"],
+  ["grenade-dark-choc-mint", "Grenade bar, Dark Chocolate Mint", "Supplements", null, [345.5, 36.4, 19.3, 13.6], null, [["1 bar", 55]], "typical"],
+  ["quest-cookie-dough", "Quest bar, Chocolate Chip Cookie Dough", "Supplements", null, [321.7, 35.0, 6.7, 14.3], null, [["1 bar", 60]]],
+  ["quest-brownie", "Quest bar, Chocolate Brownie", "Supplements", null, [278.3, 33.3, 6.7, 9.3], null, [["1 bar", 60]]],
+  ["quest-cookies-cream", "Quest bar, Cookies & Cream", "Supplements", null, [348.3, 35.0, 8.3, 15.0], null, [["1 bar", 60]]],
+  ["quest-white-choc-raspberry", "Quest bar, White Chocolate Raspberry", "Supplements", null, [313.3, 33.3, 6.7, 13.8], null, [["1 bar", 60]]]
 ];

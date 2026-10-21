@@ -47,7 +47,7 @@ const WORKOUTS = [
   { id: 'HIIT', met: 8.0 }, { id: 'Other', met: 4.0 }
 ];
 const CREDIT = 0.78; // share of watch calories credited (resting burn is already in the base target)
-const GROUPS = ['Carbs', 'Protein', 'Dairy', 'Vegetables', 'Fruits', 'Legumes', 'Fats & extras', 'Snacks', 'Drinks', 'Dishes', 'Other'];
+const GROUPS = ['Carbs', 'Protein', 'Dairy', 'Vegetables', 'Fruits', 'Legumes', 'Fats & extras', 'Snacks', 'Supplements', 'Drinks', 'Dishes', 'Other'];
 
 const STARTER = {};
 (window.MIZAN_FOODS || []).forEach(([id, name, group, rawLabel, raw, cooked, units, note]) => {
