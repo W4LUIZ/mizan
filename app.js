@@ -50,9 +50,9 @@ const CREDIT = 0.78; // share of watch calories credited (resting burn is alread
 const GROUPS = ['Carbs', 'Protein', 'Dairy', 'Vegetables', 'Fruits', 'Legumes', 'Fats & extras', 'Snacks', 'Drinks', 'Dishes', 'Other'];
 
 const STARTER = {};
-(window.MIZAN_FOODS || []).forEach(([id, name, group, rawLabel, raw, cooked, units]) => {
+(window.MIZAN_FOODS || []).forEach(([id, name, group, rawLabel, raw, cooked, units, note]) => {
   const v = (a) => a ? { k: a[0], p: a[1], c: a[2], f: a[3] } : null;
-  STARTER[id] = { id, name, group, rawLabel, per: 100, raw: v(raw), cooked: v(cooked), units: (units || []).map(([l, g]) => ({ l, g })), starter: true };
+  STARTER[id] = { id, name, group, rawLabel, per: 100, raw: v(raw), cooked: v(cooked), units: (units || []).map(([l, g]) => ({ l, g })), starter: true, typical: note === 'typical' };
 });
 
 // ---------------------------------------------------------------- state
@@ -63,6 +63,7 @@ const S = {
   recipes: {},   // by id (shared)
   months: {},    // 'YYYY-MM' -> { days: { 'YYYY-MM-DD': { entries: [], workouts: [] } } } (private)
   members: [],
+  partner: {},
   ui: { view: 'today', day: today(), libTab: 'foods', libGroup: 'All', libQuery: '', sheets: [], setupStep: 0, setup: null,
         auth: { mode: 'signin', email: '', password: '', msg: '', busy: false }, hh: { name: '', display: '', code: '', msg: '', busy: false }, recovery: false, phase: 'loading', bootError: '' }
 };
@@ -91,8 +92,15 @@ const Store = {
   },
   async loadMembers() {
     if (!this.hh) return;
-    const { data } = await this.sb.from('members').select('user_id, display_name').eq('household_id', this.hh.id);
-    S.members = data || [];
+    let res = await this.sb.from('members').select('user_id, display_name, share_log').eq('household_id', this.hh.id);
+    if (res.error) res = await this.sb.from('members').select('user_id, display_name').eq('household_id', this.hh.id);
+    S.members = res.data || [];
+  },
+  async loadPartnerMonth(uid, m) {
+    const key = uid + '|' + m;
+    S.partner[key] = S.partner[key] || { loading: true };
+    const { data, error } = await this.sb.from('user_docs').select('data').eq('user_id', uid).eq('doc_id', 'm-' + m).maybeSingle();
+    S.partner[key] = error ? { error: true } : { data: (data && data.data) || { days: {} } };
   },
   cacheKey() { return 'mizan.cache.' + (this.user ? this.user.id : 'none'); },
   readCache() {
@@ -317,7 +325,62 @@ function renderNav() {
 }
 
 // ---------------------------------------------------------------- Today
+function sharingPartners() { return S.members.filter((m) => Store.user && m.user_id !== Store.user.id && m.share_log); }
+function viewSwitch() {
+  const ps = sharingPartners(); if (!ps.length) return '';
+  const v = S.ui.viewing;
+  return `<div class="seg" role="group" aria-label="Whose log">
+    <button data-act="viewLog" data-u="" aria-pressed="${!v}">My log</button>
+    ${ps.map((m) => `<button data-act="viewLog" data-u="${esc(m.user_id)}" aria-pressed="${v === m.user_id}">${esc(m.display_name || 'Member')}'s log</button>`).join('')}</div>`;
+}
+function dayHeader(k, pill) {
+  const isToday = k === today();
+  const label = isToday ? 'Today' : k === addDays(today(), -1) ? 'Yesterday' : k === addDays(today(), 1) ? 'Tomorrow' : longDate(k).split(',')[0];
+  return `<div class="hdr"><div><div class="eyebrow">${esc(longDate(k))}</div>
+      <div class="row" style="gap:6px"><button class="icon-btn" data-act="day" data-d="-1" aria-label="Previous day" style="width:32px;height:32px;background:none">${icon('left', 20)}</button>
+      <h1>${label}</h1><button class="icon-btn" data-act="day" data-d="1" aria-label="Next day" style="width:32px;height:32px;background:none">${icon('right', 20)}</button></div></div>
+      <span class="pill">${esc(pill)}</span></div>`;
+}
+function partnerDay(uid, k) {
+  const e = S.partner[uid + '|' + monthOf(k)];
+  if (!e) { Store.loadPartnerMonth(uid, monthOf(k)).then(() => { if (S.ui.viewing === uid) softRender(); }); return null; }
+  if (e.loading) return null;
+  if (e.error) return { error: true };
+  return (e.data.days && e.data.days[k]) || { entries: [], workouts: [] };
+}
+function renderPartnerToday(uid) {
+  const k = S.ui.day; const m = S.members.find((x) => x.user_id === uid) || {}; const name = m.display_name || 'Member';
+  const dd = partnerDay(uid, k);
+  let body;
+  if (!dd) body = `<div class="card note">Loading ${esc(name)}'s log…</div>`;
+  else if (dd.error) body = `<div class="card note">Couldn't load ${esc(name)}'s log. Check your connection and try again.</div>`;
+  else {
+    const tot = dd.entries.reduce((t, e) => { t.k += e.k; t.p += e.p; t.c += e.c; t.f += e.f; return t; }, { k: 0, p: 0, c: 0, f: 0 });
+    const burned = dd.workouts.reduce((a, w) => a + (w.credit || 0), 0);
+    const workouts = dd.workouts.map((w) => `<div class="item"><span class="add-btn" style="background:var(--soft)">${icon('pulse', 20)}</span>
+      <span class="grow"><span class="name">${esc(w.type)}${w.km ? ' · ' + r1(w.km) + ' km' : ''}</span><span class="sub">${w.min ? r0(w.min) + ' min' : ''}${w.watch ? ' · ' + fmt(w.watch) + ' kcal on watch' : ''}</span></span>
+      <span class="num" style="color:var(--acc)">+${fmt(w.credit)}</span></div>`).join('');
+    const mealNames = []; dd.entries.forEach((e) => { if (!mealNames.includes(e.meal)) mealNames.push(e.meal); });
+    const order = ['Breakfast', 'Lunch', 'Dinner', 'Snacks']; mealNames.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    const meals = mealNames.map((meal) => {
+      const es = dd.entries.filter((e) => e.meal === meal);
+      return `<section class="list" aria-label="${esc(meal)}"><div class="meal-head"><div><h2>${esc(meal)}</h2><span class="small muted">${fmt(es.reduce((a, e) => a + e.k, 0))} kcal</span></div>
+        <button class="pill" data-act="copyFrom" data-meal="${esc(meal)}">Copy meal</button></div>
+        ${es.map((e) => `<div class="item"><span class="grow"><span class="name">${esc(e.name)}${e.out ? '<span class="badge">Out</span>' : ''}</span><span class="sub">${esc(e.detail)} · ${fmt(e.k)} kcal</span></span>
+          <button class="add-btn" data-act="copyFrom" data-id="${esc(e.id)}" aria-label="Copy ${esc(e.name)} to my log">${icon('copy', 18)}</button></div>`).join('')}</section>`;
+    }).join('');
+    body = `<section class="card ring-card" aria-label="${esc(name)}'s day">
+        <div class="small muted">Eaten</div><div class="num" style="font-size:40px;line-height:1">${fmt(tot.k)}</div><div class="small muted">kcal${burned ? ' · +' + fmt(burned) + ' from workouts' : ''}</div>
+        <div class="trio"><div><div class="num" style="color:var(--p)">${r0(tot.p)} g</div><div class="small muted">Protein</div></div><div><div class="num" style="color:var(--c)">${r0(tot.c)} g</div><div class="small muted">Carbs</div></div><div><div class="num" style="color:var(--f)">${r0(tot.f)} g</div><div class="small muted">Fat</div></div></div></section>
+      ${workouts ? `<section class="list"><div class="meal-head"><h2>Workouts</h2></div>${workouts}</section>` : ''}
+      ${meals || `<div class="card note">${esc(name)} hasn't logged any food on this day.</div>`}
+      <p class="note" style="margin:0">Tap the copy button on a food, or Copy meal, to add it to your own log. ${esc(name)}'s weight and targets stay private.</p>`;
+  }
+  return `<main class="screen">${dayHeader(k, 'Read only')}${viewSwitch()}${body}</main>`;
+}
 function renderToday() {
+  if (S.ui.viewing && sharingPartners().some((m) => m.user_id === S.ui.viewing)) return renderPartnerToday(S.ui.viewing);
+  S.ui.viewing = null;
   const k = S.ui.day; const isToday = k === today();
   const base = baseFor(k); const ex = exerciseFor(k); const tot = totalsFor(k);
   const allowance = base.kcal + ex; const left = allowance - tot.k;
@@ -343,10 +406,7 @@ function renderToday() {
       <div class="row" style="gap:8px">${es.length ? `<button class="link small" data-act="saveMeal" data-meal="${m}">Save meal</button>` : ''}<button class="add-btn" data-act="openLog" data-meal="${m}" aria-label="Add to ${m}">+</button></div></div>${rows}</section>`;
   }).join('');
   return `<main class="screen">
-    <div class="hdr"><div><div class="eyebrow">${esc(longDate(k))}</div>
-      <div class="row" style="gap:6px"><button class="icon-btn" data-act="day" data-d="-1" aria-label="Previous day" style="width:32px;height:32px;background:none">${icon('left', 20)}</button>
-      <h1>${label}</h1><button class="icon-btn" data-act="day" data-d="1" aria-label="Next day" style="width:32px;height:32px;background:none">${icon('right', 20)}</button></div></div>
-      <span class="pill">${esc(dayTag(k))}</span></div>
+    ${dayHeader(k, dayTag(k))}${viewSwitch()}
     <section class="card ring-card" aria-label="Calories">
       <div class="ring"><svg width="196" height="196" viewBox="0 0 196 196" aria-hidden="true">
         <circle cx="98" cy="98" r="84" fill="none" stroke="var(--track)" stroke-width="14"/>
@@ -403,7 +463,7 @@ function foodRow(f, act, extra = '') {
   const basis = f.per === 'serving' ? 'per serving' : 'per 100 g' + (f.rawLabel ? ' ' + f.rawLabel.toLowerCase() : '');
   return `<button class="item" data-act="${act}" data-id="${esc(f.id)}" ${extra}>
     <span class="grow"><span class="name">${esc(f.name)}${!S.foods[f.id] ? '' : `<span class="badge">${STARTER[f.id] ? 'Edited' : 'Custom'}</span>`}</span><br>
-    <span class="sub">${esc(f.group || '')} · ${fmt(v.k)} kcal ${basis}${f.cooked ? ' · cooked values' : ''}${f.by ? ' · by ' + esc(f.by) : ''}</span></span>
+    <span class="sub">${esc(f.group || '')} · ${fmt(v.k)} kcal ${basis}${f.cooked ? ' · cooked values' : ''}${f.typical && !S.foods[f.id] ? ' · typical' : ''}${f.by ? ' · by ' + esc(f.by) : ''}</span></span>
     <span class="muted">${icon('right', 18)}</span></button>`;
 }
 
@@ -536,7 +596,9 @@ function renderSettings() {
     <div class="list">
       <div class="item"><span class="grow"><b>${esc(Store.hh ? Store.hh.name : '')}</b><span class="sub">${S.members.length ? S.members.map((m) => esc(m.display_name || 'Member')).join(' · ') : ''}</span></span></div>
       <div class="item"><span class="grow"><b>Invite code</b><span class="sub wrap">Share it so someone can join and use the same foods and recipes</span></span>
-        <span class="num" style="font-size:18px;letter-spacing:.12em">${esc(Store.hh ? Store.hh.code : '')}</span><button class="pill" data-act="copyCode">Copy</button></div></div>
+        <span class="num" style="font-size:18px;letter-spacing:.12em">${esc(Store.hh ? Store.hh.code : '')}</span><button class="pill" data-act="copyCode">Copy</button></div>
+      <div class="item"><span class="grow"><b>Share my food log</b><span class="sub wrap">Household members can see your meals and workouts and copy foods from them. Your weight and targets stay private.</span></span>
+        <button class="toggle" role="switch" aria-checked="${!!((S.members.find((m) => Store.user && m.user_id === Store.user.id) || {}).share_log)}" aria-label="Share my food log" data-act="toggleShare"></button></div></div>
     <div class="eyebrow">Account</div>
     <div class="list"><div class="item"><span class="grow"><b>Signed in</b><span class="sub">${esc(Store.user ? Store.user.email : '')}</span></span><button class="pill" data-act="signOut">Sign out</button></div></div>
     <div class="eyebrow">Your data</div>
@@ -544,7 +606,7 @@ function renderSettings() {
       <div class="item"><span class="grow"><b>Saved</b><span class="sub wrap">Your logs, weight and targets are private to you. Foods and recipes are shared with your household.</span></span></div>
       ${row('Export log as spreadsheet (CSV)', '', 'exportCsv')}${row('Download full backup', '', 'exportBackup')}
       <label class="item" style="cursor:pointer"><span class="grow" style="font-weight:700">Restore from backup</span><input type="file" accept="application/json,.json" data-in="restore" style="display:none"><span class="muted">${icon('right', 18)}</span></label></div>
-    <p class="note">Mizan · Phase 3 · ${Object.keys(STARTER).length} starter foods, based on USDA FoodData Central.</p>
+    <p class="note">Mizan · ${Object.keys(STARTER).length} starter foods, based on USDA FoodData Central.</p>
   </main>`;
 }
 
@@ -699,7 +761,7 @@ function renderSheet(scrollTop) {
 function renderSheetInner(scrollTop) {
   const el = $('#sheet'); const s = topSheet();
   if (!s) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
-  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, targets: sheetTargets }[s.type](s);
+  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, targets: sheetTargets, copyFrom: sheetCopyFrom }[s.type](s);
   el.innerHTML = `<div class="in">${html}</div>`; el.hidden = false; document.body.style.overflow = 'hidden';
   if (scrollTop) el.scrollTop = 0;
 }
@@ -776,6 +838,7 @@ function sheetAmount(s) {
   return `${sheetTop(item.name, editing ? 'Edit · ' + s.meal : 'Add to ' + s.meal)}
     <div class="row"><span class="small muted grow">${isRecipe ? 'Recipe' : esc(item.group || '')}${!isRecipe && item.per !== 'serving' ? ' · per 100 g ' + ((s.state === 'cooked' ? 'cooked' : (item.rawLabel || '').toLowerCase())) + ': ' + fmt(valsFor(item, s.state).k) + ' kcal' : ''}</span>
       <button class="icon-btn" data-act="toggleFav" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" style="color:${fav ? 'var(--c)' : 'var(--muted)'}">${icon('star', 20, fav ? 'fill' : '')}</button></div>
+    ${!isRecipe && item.typical && !S.foods[item.id] ? '<p class="note" style="margin:0">Typical values. Brands and recipes vary, so check the label and edit this food if it differs.</p>' : ''}
     ${controls}
     <div class="item" style="border:0;padding:4px 0"><span class="grow"><b>Eating out</b><span class="sub wrap">Counts under “Eating out” in Progress</span></span><button class="toggle" role="switch" aria-checked="${!!s.out}" aria-label="Eating out" data-act="amtOut"></button></div>
     <section class="card ring-card" id="amtMacros" style="padding:16px">${macroBlock(m)}</section>
@@ -798,6 +861,22 @@ function entryDetail(s) {
   const st = s.state === 'cooked' ? 'cooked' : (f.rawLabel || '').toLowerCase();
   if (s.unit >= 0) { const u = f.units[s.unit]; return `${r1(num(s.qty))} × ${u.l} · ${r0(u.g * num(s.qty))} g${st && !unitLabelState(u.l) ? ' ' + st : ''}`; }
   return `${r0(num(s.qty))} g${st ? ' ' + st : ''}`;
+}
+
+// ---- copy from a household member's log
+function sheetCopyFrom(s) {
+  const dd = partnerDay(s.uid, s.day) || { entries: [] };
+  const items = (dd.entries || []).filter((e) => s.ids.includes(e.id));
+  const meals = mealsList(); const days = [[today(), 'Today'], [addDays(today(), -1), 'Yesterday']];
+  if (!days.some(([k]) => k === s.day)) days.push([s.day, longDate(s.day).split(',')[0] + ' ' + parseKey(s.day).getDate()]);
+  const total = items.reduce((a, e) => a + e.k, 0);
+  return `${sheetTop('Copy to my log', 'From ' + (s.name || 'household'))}
+    <div class="list">${items.map((e) => `<div class="item"><span class="grow"><span class="name">${esc(e.name)}</span><span class="sub">${esc(e.detail)}</span></span><span class="num">${fmt(e.k)}</span></div>`).join('')}</div>
+    <div class="small muted" style="font-weight:700">Add to</div>
+    <div class="seg" role="group">${meals.map((m) => `<button data-act="cfMeal" data-m="${m}" aria-pressed="${s.meal === m}">${m}</button>`).join('')}</div>
+    <div class="chips" role="group">${days.map(([k, l]) => `<button class="chip" data-act="cfDay" data-k="${k}" aria-pressed="${s.to === k}">${esc(l)}</button>`).join('')}</div>
+    <p class="note" style="margin:0">Copies the same amounts. You can change an amount afterwards by tapping it in your log.</p>
+    <button class="btn block" data-act="cfSave" ${items.length ? '' : 'disabled'}>Copy ${items.length} item${items.length === 1 ? '' : 's'} · ${fmt(total)} kcal</button>`;
 }
 
 // ---- quick add
@@ -944,6 +1023,33 @@ function refreshAmount() { const s = topSheet(); const el = $('#amtMacros'); if 
 const A = {
   nav(d) { S.ui.view = d.v; if (d.v === 'today') S.ui.day = S.ui.day; render(); window.scrollTo(0, 0); },
   day(d) { S.ui.day = addDays(S.ui.day, num(d.d)); render(); },
+  viewLog(d) { S.ui.viewing = d.u || null; render(); window.scrollTo(0, 0); },
+  copyFrom(d) {
+    const uid = S.ui.viewing; const dd = partnerDay(uid, S.ui.day); if (!dd || dd.error) return;
+    const ids = d.id ? [d.id] : dd.entries.filter((e) => e.meal === d.meal).map((e) => e.id);
+    const first = dd.entries.find((e) => e.id === ids[0]) || {};
+    const m = mealsList().includes(first.meal) ? first.meal : 'Snacks';
+    const name = (S.members.find((x) => x.user_id === uid) || {}).display_name;
+    pushSheet({ type: 'copyFrom', uid, day: S.ui.day, ids, meal: m, to: today(), name });
+  },
+  cfMeal(d) { topSheet().meal = d.m; renderSheet(); },
+  cfDay(d) { topSheet().to = d.k; renderSheet(); },
+  cfSave() {
+    const s = topSheet(); const dd = partnerDay(s.uid, s.day) || { entries: [] };
+    const items = dd.entries.filter((e) => s.ids.includes(e.id)); const mine = dayData(s.to, true);
+    items.forEach((e) => mine.entries.push(Object.assign(clone(e), { id: uid(), meal: s.meal })));
+    items.forEach((e) => { if (e.src && e.src.kind !== 'quick' && e.src.id) addRecent((e.src.kind === 'recipe' ? 'r:' : 'f:') + e.src.id); });
+    saveDay(s.to); save('core');
+    toast(`Copied ${items.length} item${items.length === 1 ? '' : 's'} to your ${s.meal}${s.to === today() ? ' today' : ''}`); closeSheets();
+  },
+  async toggleShare() {
+    const me = S.members.find((m) => Store.user && m.user_id === Store.user.id); if (!me) return;
+    const next = !me.share_log;
+    const { error } = await Store.sb.from('members').update({ share_log: next }).eq('user_id', Store.user.id);
+    if (error) { toast('Couldn’t change sharing. Try again.'); return; }
+    me.share_log = next; Store.writeCache(); render();
+    toast(next ? 'Your food log is now shared with your household' : 'Your food log is now private');
+  },
   close() { closeSheets(); },
   back() { popSheet(); },
   openLog(d) { S.ui.sheets = []; pushSheet({ type: 'log', meal: d.meal || autoMeal(), q: '', tab: 'recent' }); },
@@ -1133,7 +1239,7 @@ const A = {
     try { await Store.flush(); } catch (e) { /* ignore */ }
     Store.clearCache();
     try { await Store.sb.auth.signOut(); } catch (e) { /* ignore */ }
-    Store.user = null; Store.hh = null; S.core = freshCore(); S.foods = {}; S.recipes = {}; S.months = {}; S.members = [];
+    Store.user = null; Store.hh = null; S.ui.viewing = null; S.partner = {}; S.core = freshCore(); S.foods = {}; S.recipes = {}; S.months = {}; S.members = [];
     S.ui.sheets = []; S.ui.view = 'today'; S.ui.editing = false; S.ui.setup = null; S.ui.setupStep = 0;
     S.ui.auth = { mode: 'signin', email: '', password: '', msg: '', busy: false }; S.ui.hh = { name: '', display: '', code: '', msg: '', busy: false };
     S.ui.phase = 'auth'; render(); window.scrollTo(0, 0);
@@ -1252,6 +1358,7 @@ document.addEventListener('change', (ev) => { if (ev.target.id === 'fe-sg') setT
 window.addEventListener('pagehide', () => { if (Store.pending()) Store.flush(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (Store.pending()) Store.flush(); return; }
+  S.partner = {};
   if (S.ui.phase === 'app' && Store.hh && !Store.pending()) Store.loadAll().then(() => { softRender(); stravaAuto(); }, () => {});
 });
 
