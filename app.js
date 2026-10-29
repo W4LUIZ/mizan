@@ -798,7 +798,7 @@ function logResults(s) {
   let rows = [];
   if (tab === 'recent') rows = S.core.recent.map(refRow).filter(Boolean);
   if (tab === 'favs') rows = S.core.favs.map(refRow).filter(Boolean);
-  if (tab === 'saved') rows = Object.values(S.core.saved).map((m) => `<button class="item" data-act="logSaved" data-id="${m.id}"><span class="grow"><span class="name">${esc(m.name)}<span class="badge">Meal</span></span><span class="sub">${m.items.length} items · ${fmt(m.items.reduce((a, e) => a + e.k, 0))} kcal</span></span><span class="add-btn">+</span></button>`);
+  if (tab === 'saved') rows = Object.values(S.core.saved).map((m) => `<div class="row" style="gap:4px"><button class="item grow" style="border:0" data-act="logSaved" data-id="${m.id}"><span class="grow"><span class="name">${esc(m.name)}<span class="badge">Meal</span></span><span class="sub">${m.items.length} items · ${fmt(m.items.reduce((a, e) => a + e.k, 0))} kcal</span></span><span class="add-btn">+</span></button>${s.delSaved === m.id ? `<button class="btn danger" style="padding:8px 12px" data-act="savedDelete" data-id="${m.id}">Delete</button>` : `<button class="icon-btn" data-act="savedAsk" data-id="${m.id}" aria-label="Delete ${esc(m.name)}" style="background:none;color:var(--muted)">${icon('x', 18)}</button>`}</div>`);
   const empty = { recent: 'Foods you log will show up here.', favs: 'Star a food when logging it to keep it here.', saved: 'Save a whole meal from the Today screen to log it in one tap.' }[tab];
   return `<div class="tabs" role="group" style="margin-bottom:10px">${[['recent', 'Recent'], ['favs', 'Favourites'], ['saved', 'Saved meals']].map(([t, l]) => `<button data-act="logTab" data-t="${t}" aria-pressed="${tab === t}">${l}</button>`).join('')}</div>
     <div class="list">${rows.length ? rows.join('') : `<div class="empty">${empty}</div>`}</div>`;
@@ -885,7 +885,8 @@ function sheetCopyFrom(s) {
 
 // ---- quick add
 function sheetQuick(s) {
-  return `${sheetTop('Quick add', 'Add to ' + s.meal)}
+  const editing = !!s.entryId;
+  return `${sheetTop(editing ? 'Edit entry' : 'Quick add', (editing ? 'In ' : 'Add to ') + s.meal)}
     <p class="note">For meals out when you only know the rough numbers.</p>
     <label class="f">Name (optional)<input class="input" id="qa-name" data-in="qaF" data-f="name" value="${esc(s.name || '')}" placeholder="Chicken shawarma plate"></label>
     <div class="grid2"><label class="f">Calories<input class="input" id="qa-k" data-in="qaF" data-f="k" inputmode="numeric" value="${esc(s.k || '')}"></label>
@@ -893,7 +894,7 @@ function sheetQuick(s) {
     <label class="f">Carbs (g, optional)<input class="input" id="qa-c" data-in="qaF" data-f="c" inputmode="decimal" value="${esc(s.c || '')}"></label>
     <label class="f">Fat (g, optional)<input class="input" id="qa-f" data-in="qaF" data-f="f" inputmode="decimal" value="${esc(s.f || '')}"></label></div>
     <div class="item" style="border:0;padding:4px 0"><span class="grow"><b>Eating out</b></span><button class="toggle" role="switch" aria-checked="${s.out !== false}" aria-label="Eating out" data-act="qaOut"></button></div>
-    <button class="btn block" data-act="qaSave">Add to ${esc(s.meal)}</button>`;
+    <div class="stack">${editing ? `<button class="btn block" data-act="qaSave">Save changes</button><button class="btn danger block" data-act="entryDelete">Remove from ${esc(s.meal)}</button>` : `<button class="btn block" data-act="qaSave">Add to ${esc(s.meal)}</button>`}</div>`;
 }
 
 // ---- food editor (new or existing)
@@ -1306,13 +1307,15 @@ const A = {
     const s = topSheet(); const k = s.day || S.ui.day; const dd = dayData(k, true);
     dd.entries = dd.entries.filter((e) => e.id !== s.entryId); saveDay(k); toast('Removed'); closeSheets();
   },
+  savedAsk(d) { const s = topSheet(); s.delSaved = d.id; $('#logResults').innerHTML = logResults(s); },
+  savedDelete(d) { const s = topSheet(); const m = S.core.saved[d.id]; delete S.core.saved[d.id]; s.delSaved = null; save('core'); $('#logResults').innerHTML = logResults(s); toast('Deleted ' + (m ? m.name : 'meal')); },
   qaOut() { const s = topSheet(); s.out = s.out === false ? true : false; renderSheet(); },
   qaSave() {
     const s = topSheet(); if (!(num(s.k) > 0)) { toast('Enter the calories'); return; }
     const dd = dayData(S.ui.day, true);
     const e = { id: s.entryId || uid(), meal: s.meal, name: (s.name || '').trim() || 'Quick add', detail: 'Quick add', k: num(s.k), p: num(s.p), c: num(s.c), f: num(s.f), out: s.out !== false, group: 'Dishes', src: { kind: 'quick' } };
     if (s.entryId) { const i = dd.entries.findIndex((x) => x.id === s.entryId); if (i >= 0) dd.entries[i] = e; } else dd.entries.push(e);
-    saveDay(S.ui.day); toast(`Added to ${s.meal}`); closeSheets();
+    saveDay(S.ui.day); toast(s.entryId ? 'Saved' : `Added to ${s.meal}`); closeSheets();
   },
   saveMeal(d) { pushSheet({ type: 'saveMeal', meal: d.meal, name: '' }); },
   smSave() {
