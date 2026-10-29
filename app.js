@@ -36,7 +36,8 @@ const ICON = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   pulse: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
   star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
-  scale: '<path d="M5 21h14M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>'
+  scale: '<path d="M5 21h14M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 8v8M11 8v8M14 8v8M17 8v8"/>'
 };
 const icon = (n, s = 22, extra = '') => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="${extra === 'fill' ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
@@ -760,10 +761,11 @@ function renderSheet(scrollTop) {
 }
 function renderSheetInner(scrollTop) {
   const el = $('#sheet'); const s = topSheet();
-  if (!s) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
-  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, targets: sheetTargets, copyFrom: sheetCopyFrom }[s.type](s);
+  if (!s) { Scanner.stop(); el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
+  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, targets: sheetTargets, copyFrom: sheetCopyFrom, scan: sheetScan, linkCode: sheetLinkCode }[s.type](s);
   el.innerHTML = `<div class="in">${html}</div>`; el.hidden = false; document.body.style.overflow = 'hidden';
   if (scrollTop) el.scrollTop = 0;
+  if (s.type === 'scan') Scanner.attach(); else Scanner.stop();
 }
 const sheetTop = (title, sub, closeAll) => `<div class="bar-top"><button class="icon-btn" data-act="${S.ui.sheets.length > 1 && !closeAll ? 'back' : 'close'}" aria-label="${S.ui.sheets.length > 1 && !closeAll ? 'Back' : 'Close'}">${icon(S.ui.sheets.length > 1 && !closeAll ? 'back' : 'x', 20)}</button>
   <div class="grow">${sub ? `<div class="eyebrow">${esc(sub)}</div>` : ''}<h1>${esc(title)}</h1></div></div>`;
@@ -774,10 +776,11 @@ function sheetLog(s) {
   return `${sheetTop('Log food', 'Logging to ' + s.meal)}
     <div class="seg" role="group">${meals.map((m) => `<button data-act="logMeal" data-m="${m}" aria-pressed="${s.meal === m}">${m}</button>`).join('')}</div>
     <label class="search">${icon('search', 20)}<input id="logSearch" data-in="logSearch" type="search" placeholder="Search foods &amp; recipes" value="${esc(s.q || '')}" aria-label="Search foods and recipes"></label>
-    <div class="grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-      <button class="card" data-act="quickAdd" style="border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;font-weight:700;font-size:13px"><span style="color:var(--acc)">${icon('bolt', 20)}</span>Quick add</button>
-      <button class="card" data-act="newFood" style="border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;font-weight:700;font-size:13px"><span style="color:var(--acc)">${icon('doc', 20)}</span>New food</button>
-      <button class="card" data-act="copyMeal" style="border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;font-weight:700;font-size:13px"><span style="color:var(--acc)">${icon('copy', 20)}</span>Copy meal</button></div>
+    <div class="tiles">
+      <button class="card tile" data-act="scanOpen"><span style="color:var(--acc)">${icon('scan', 20)}</span>Scan</button>
+      <button class="card tile" data-act="quickAdd"><span style="color:var(--acc)">${icon('bolt', 20)}</span>Quick add</button>
+      <button class="card tile" data-act="newFood"><span style="color:var(--acc)">${icon('doc', 20)}</span>New food</button>
+      <button class="card tile" data-act="copyMeal"><span style="color:var(--acc)">${icon('copy', 20)}</span>Copy meal</button></div>
     <div id="logResults">${logResults(s)}</div>`;
 }
 function logResults(s) {
@@ -786,7 +789,8 @@ function logResults(s) {
     const words = q.split(/\s+/);
     const match = (n) => { const l = n.toLowerCase(); return words.every((w) => l.includes(w)); };
     const rs = Object.values(S.recipes).filter((r) => match(r.name)).map((r) => recipeRow(r));
-    const fs = allFoods().filter((f) => match(f.name)).sort((a, b) => a.name.toLowerCase().indexOf(q) - b.name.toLowerCase().indexOf(q) || a.name.localeCompare(b.name)).slice(0, 40).map((f) => pickRow(f));
+    const code = /^\d{8,14}$/.test(q) ? normCode(q) : '';
+    const fs = allFoods().filter((f) => match(f.name) || (code && f.barcode && normCode(f.barcode) === code)).sort((a, b) => a.name.toLowerCase().indexOf(q) - b.name.toLowerCase().indexOf(q) || a.name.localeCompare(b.name)).slice(0, 40).map((f) => pickRow(f));
     const rows = rs.concat(fs);
     return `<div class="list">${rows.length ? rows.join('') : `<div class="empty">Nothing matches “${esc(s.q)}”. Add it with <button class="link" data-act="newFood" data-name="${esc(s.q)}">New food</button>.</div>`}</div>`;
   }
@@ -899,6 +903,8 @@ function sheetFoodEdit(s) {
   return `${sheetTop(isNew ? 'New food' : 'Edit food', isNew ? 'Saved to your library' : (starter ? 'Starter food' : 'Your food'))}
     <label class="f">Name<input class="input" id="fe-name" data-in="feF" data-f="name" value="${esc(d.name)}" placeholder="Kinder Bueno"></label>
     <label class="f">Group<select class="input" id="fe-group" data-in="feF" data-f="group">${GROUPS.map((g) => `<option ${d.group === g ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+    ${s.note ? `<p class="note">${esc(s.note)}</p>` : ''}
+    ${isNew && d.barcode ? `<button class="btn ghost block" data-act="linkOpen">Already in the library? Link this barcode to it</button>` : ''}
     <div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">The label gives values</div>
     <div class="seg" role="group"><button data-act="feBasis" data-v="100" aria-pressed="${d.basis === '100'}">Per 100 g</button><button data-act="feBasis" data-v="serving" aria-pressed="${d.basis === 'serving'}">Per serving</button></div>
     ${d.basis === 'serving' ? `<div class="grid2"><label class="f">Serving name<input class="input" id="fe-sname" data-in="feF" data-f="sName" value="${esc(d.sName)}" placeholder="1 bar"></label>
@@ -912,6 +918,8 @@ function sheetFoodEdit(s) {
     ${d.basis === '100' ? `<div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">Handy units (optional)</div>
       ${d.units.map((u, i) => `<div class="row"><input class="input grow" id="fe-ul${i}" data-in="feU" data-i="${i}" data-k="l" value="${esc(u.l)}" placeholder="1 bar" aria-label="Unit name"><input class="input" style="width:96px" id="fe-ug${i}" data-in="feU" data-i="${i}" data-k="g" inputmode="decimal" value="${esc(u.g)}" placeholder="grams" aria-label="Grams"><button class="icon-btn" data-act="feUnitDel" data-i="${i}" aria-label="Remove unit">${icon('x', 18)}</button></div>`).join('')}
       <button class="link" data-act="feUnitAdd" style="align-self:flex-start">+ Add a unit</button>` : ''}
+    <div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">Barcode (optional)</div>
+    <div class="row"><input class="input grow" id="fe-code" data-in="feF" data-f="barcode" inputmode="numeric" autocomplete="off" value="${esc(d.barcode || '')}" placeholder="Scan or type it" aria-label="Barcode"><button class="icon-btn" data-act="scanAttach" aria-label="Scan barcode">${icon('scan', 20)}</button></div>
     <button class="btn block" data-act="feSave">${s.thenLog ? 'Save and log it' : 'Save food'}</button>
     ${!isNew ? `<button class="btn ghost block" data-act="feLog">Log this food</button>` : ''}
     ${!isNew ? `<button class="btn danger block" data-act="feDelete">${starter && S.foods[s.id] && !S.foods[s.id].deleted ? 'Reset to starter values' : 'Delete food'}</button>` : ''}`;
@@ -919,7 +927,7 @@ function sheetFoodEdit(s) {
 function foodToDraft(f) {
   const str = (v) => v ? { k: v.k, p: v.p, c: v.c, f: v.f } : { k: '', p: '', c: '', f: '' };
   return { name: f ? f.name : '', group: f ? f.group : 'Other', basis: f && f.per === 'serving' ? 'serving' : '100', sName: f && f.per === 'serving' ? (f.units[0] || {}).l || '1 serving' : '1 serving', sG: '',
-    rawLabel: f ? f.rawLabel || '' : '', raw: str(f && f.raw), hasCooked: !!(f && f.cooked), cooked: str(f && f.cooked), units: f && f.per !== 'serving' ? f.units.map((u) => ({ l: u.l, g: u.g })) : [] };
+    rawLabel: f ? f.rawLabel || '' : '', raw: str(f && f.raw), hasCooked: !!(f && f.cooked), cooked: str(f && f.cooked), units: f && f.per !== 'serving' ? f.units.map((u) => ({ l: u.l, g: u.g })) : [], barcode: f && f.barcode || '' };
 }
 
 // ---- recipe editor
@@ -1012,6 +1020,186 @@ function setTargetsFromMacros(kcal, protein) {
   const t = S.core.targets; t.kcal = Math.round(kcal); t.protein = Math.round(protein);
   t.fat = Math.round(t.kcal * 0.28 / 9); t.carbs = Math.max(0, Math.round((t.kcal - t.protein * 4 - t.fat * 9) / 4));
 }
+// ================================================================= BARCODES
+// Barcodes are stored as digits; 12-digit UPC-A becomes the matching 13-digit EAN.
+function normCode(c) { let d = String(c || '').replace(/\D/g, ''); if (d.length === 12) d = '0' + d; return d; }
+function foodByCode(code) { const c = normCode(code); return c ? allFoods().find((f) => f.barcode && normCode(f.barcode) === c) : null; }
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(el); });
+}
+const Scanner = {
+  stream: null, timer: null, starting: false, detector: null, reader: null, canvas: null, last: '', ready: false,
+  status(t) { const el = $('#scanStatus'); if (el) el.textContent = t; },
+  async attach() {
+    const s = topSheet(); const v = $('#scanVideo');
+    if (!v || !s || s.err || s.busy) { this.stop(); return; }
+    if (this.stream) { v.srcObject = this.stream; v.play().catch(() => {}); this.status('Hold the barcode inside the frame'); this.loop(); return; }
+    if (this.starting) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { this.fail('nocam'); return; }
+    this.starting = true;
+    let st;
+    try {
+      st = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    } catch (e) { this.starting = false; this.fail(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError') ? 'denied' : 'nocam'); return; }
+    this.starting = false;
+    const top = topSheet();
+    if (!top || top.type !== 'scan' || top.busy || top.err || document.hidden) { st.getTracks().forEach((t) => t.stop()); return; }
+    this.stream = st;
+    const v2 = $('#scanVideo'); if (v2) { v2.srcObject = st; v2.play().catch(() => {}); }
+    try { await this.prepare(); } catch (e) { this.stop(); this.fail('noreader'); return; }
+    this.status('Hold the barcode inside the frame');
+    this.loop();
+  },
+  async prepare() {
+    if (this.ready) return;
+    if ('BarcodeDetector' in window) {
+      try {
+        const sup = await window.BarcodeDetector.getSupportedFormats();
+        const want = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'].filter((f) => sup.includes(f));
+        if (want.includes('ean_13')) { this.detector = new window.BarcodeDetector({ formats: want }); this.ready = true; return; }
+      } catch (e) { /* fall back to ZXing */ }
+    }
+    if (!window.ZXing) await loadScript('zxing.min.js');
+    const Z = window.ZXing;
+    const hints = new Map();
+    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128]);
+    hints.set(Z.DecodeHintType.TRY_HARDER, true);
+    this.reader = new Z.MultiFormatReader(); this.reader.setHints(hints);
+    this.canvas = document.createElement('canvas');
+    this.ready = true;
+  },
+  loop() { clearTimeout(this.timer); this.timer = setTimeout(() => this.tick(), 150); },
+  async tick() {
+    const s = topSheet(); const v = $('#scanVideo');
+    if (!this.stream || !s || s.type !== 'scan' || !v) return;
+    if (v.readyState < 2 || !v.videoWidth) { this.loop(); return; }
+    let text = '';
+    try {
+      if (this.detector) {
+        const codes = await this.detector.detect(v);
+        if (codes && codes.length) text = codes[0].rawValue;
+      } else {
+        const Z = window.ZXing; const w = v.videoWidth; const h = v.videoHeight;
+        const sw = w; const sh = Math.round(h * 0.6); const scale = Math.min(1, 960 / sw);
+        const c = this.canvas; c.width = Math.round(sw * scale); c.height = Math.round(sh * scale);
+        c.getContext('2d', { willReadFrequently: true }).drawImage(v, 0, Math.round((h - sh) / 2), sw, sh, 0, 0, c.width, c.height);
+        const bmp = new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(c)));
+        try { text = this.reader.decode(bmp).getText(); } catch (e) { text = ''; }
+      }
+    } catch (e) { text = ''; }
+    if (!this.stream) return;
+    const code = normCode(text);
+    // Accept a code once it has been read twice in a row, to avoid misreads.
+    if (code.length >= 8 && code === this.last) { this.last = ''; this.found(code); return; }
+    this.last = code;
+    this.loop();
+  },
+  found(code) {
+    this.stop();
+    try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) { /* ignore */ }
+    handleCode(code);
+  },
+  fail(kind) { const s = topSheet(); if (s && s.type === 'scan') { s.err = kind; renderSheet(); } },
+  stop() {
+    clearTimeout(this.timer); this.timer = null; this.last = '';
+    if (this.stream) { this.stream.getTracks().forEach((t) => t.stop()); this.stream = null; }
+    const v = $('#scanVideo'); if (v) v.srcObject = null;
+  }
+};
+document.addEventListener('visibilitychange', () => {
+  const s = topSheet();
+  if (document.hidden) Scanner.stop(); else if (s && s.type === 'scan') Scanner.attach();
+});
+
+function sheetScan(s) {
+  const sub = s.mode === 'attach' ? 'Add a barcode to this food' : 'Logging to ' + s.meal;
+  const msg = {
+    denied: 'Mizan isn’t allowed to use the camera. Allow camera access for this site in your browser’s settings, then tap Try again. You can also type the numbers under the barcode.',
+    nocam: 'The camera isn’t available here. Type the numbers under the barcode instead.',
+    noreader: 'The scanner couldn’t start. Check your connection and tap Try again, or type the numbers under the barcode.'
+  }[s.err];
+  let top;
+  if (s.busy) top = `<div class="card" style="text-align:center;padding:28px 16px"><div class="eyebrow">Barcode ${esc(s.code || '')}</div><b>Looking it up…</b></div>`;
+  else if (msg) top = `<div class="card"><p class="note" style="margin:0 0 10px">${msg}</p><button class="btn ghost block" data-act="scanRetry">Try again</button></div>`;
+  else top = `<div class="scanbox"><video id="scanVideo" playsinline muted autoplay></video><div class="scanframe"></div></div>
+    <p class="note" id="scanStatus" style="text-align:center;margin:0">Starting the camera…</p>`;
+  return `${sheetTop('Scan barcode', sub)}${top}
+    <div class="row"><input class="input grow" id="sc-code" data-in="scF" inputmode="numeric" autocomplete="off" value="${esc(s.code || '')}" placeholder="Or type the barcode numbers" aria-label="Barcode number"><button class="btn" data-act="scanManual" ${s.busy ? 'disabled' : ''}>Look up</button></div>
+    <p class="note">Products come from <b>Open Food Facts</b>, a free public database. Anything you save keeps its barcode in your shared library, so the next scan is instant for both of you.</p>`;
+}
+
+async function offLookup(code) {
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const t = setTimeout(() => { if (ctl) ctl.abort(); }, 9000);
+  try {
+    const r = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '?fields=product_name,product_name_en,brands,serving_size,serving_quantity,nutriments,categories_tags', { signal: ctl ? ctl.signal : undefined });
+    if (r.status === 404) return { found: false };
+    if (!r.ok) return { found: false, offline: true };
+    const j = await r.json();
+    if (!j || j.status !== 1 || !j.product) return { found: false };
+    return { found: true, p: j.product };
+  } catch (e) { return { found: false, offline: true }; } finally { clearTimeout(t); }
+}
+function guessGroup(tags) {
+  const t = (tags || []).join(' ');
+  const rules = [[/protein-powder|whey|protein-bar|sports-nutrition|dietary-supplement/, 'Supplements'], [/chocolate|confection|biscuit|cookie|crisps|chips|candies|sweet-snack|salty-snack|wafer|cake/, 'Snacks'],
+    [/dair|milk|yogurt|yoghurt|cheese|laban|labneh|cream/, 'Dairy'], [/beverage|drink|water|juice|coffee|tea/, 'Drinks'], [/bread|pasta|rice|cereal|oat|flour|noodle/, 'Carbs'],
+    [/meat|chicken|poultry|fish|tuna|seafood|egg/, 'Protein'], [/fruit|dates/, 'Fruits'], [/vegetable/, 'Vegetables'], [/legume|bean|lentil|chickpea|hummus/, 'Legumes'],
+    [/oil|butter|sauce|spread|nut|seed|condiment/, 'Fats & extras'], [/snack/, 'Snacks']];
+  const hit = rules.find(([re]) => re.test(t));
+  return hit ? hit[1] : 'Other';
+}
+function offToDraft(p, code) {
+  const n = p.nutriments || {}; const sq = Number(p.serving_quantity) || 0;
+  const g = (k) => { let v = n[k + '_100g']; if ((v == null || v === '') && n[k + '_serving'] != null && sq > 0) v = n[k + '_serving'] * 100 / sq; return v == null || v === '' || isNaN(Number(v)) ? null : Number(v); };
+  let kcal = g('energy-kcal'); if (kcal == null) { const kj = g('energy-kj') != null ? g('energy-kj') : g('energy'); if (kj != null) kcal = kj / 4.184; }
+  const vals = { k: kcal, p: g('proteins'), c: g('carbohydrates'), f: g('fat') };
+  const name = String(p.product_name_en || p.product_name || '').trim(); const brand = String(p.brands || '').split(',')[0].trim();
+  const d = foodToDraft(null);
+  d.name = brand && !name.toLowerCase().includes(brand.toLowerCase()) ? (brand + ' ' + name).trim() : (name || brand);
+  d.group = guessGroup(p.categories_tags); d.basis = '100'; d.barcode = code;
+  d.raw = { k: vals.k == null ? '' : Math.round(vals.k), p: vals.p == null ? '' : r1(vals.p), c: vals.c == null ? '' : r1(vals.c), f: vals.f == null ? '' : r1(vals.f) };
+  if (sq > 0) { const m = /^\s*(\d+(?:[.,]\d+)?\s*[a-z][a-z\s]*?)\s*\(/i.exec(p.serving_size || ''); d.units = [{ l: m && !/^\d+(?:[.,]\d+)?\s*(g|ml|gr|grams?)$/i.test(m[1].trim()) ? m[1].trim() : '1 serving', g: r1(sq) }]; }
+  const missing = Object.values(vals).some((v) => v == null);
+  return { d, missing };
+}
+async function handleCode(raw) {
+  const code = normCode(raw); const s = topSheet();
+  if (!s || s.type !== 'scan') return;
+  if (s.mode === 'attach') {
+    S.ui.sheets.pop(); const fe = topSheet(); if (fe && fe.type === 'foodEdit') fe.d.barcode = code;
+    renderSheet(); toast('Barcode added'); return;
+  }
+  const hit = foodByCode(code);
+  if (hit) { S.ui.sheets.pop(); openAmount('food', hit.id); return; }
+  s.busy = true; s.code = code; s.err = null; renderSheet();
+  const res = await offLookup(code);
+  if (topSheet() !== s) return; // closed while looking up
+  S.ui.sheets.pop();
+  let draft; let note;
+  if (res.found) {
+    const o = offToDraft(res.p, code); draft = o.d;
+    note = o.missing ? 'Found on Open Food Facts, but some values are missing. Fill them in from the label, then save.' : 'Found on Open Food Facts. Check the numbers against the label, then save.';
+  } else {
+    draft = foodToDraft(null); draft.basis = '100'; draft.barcode = code;
+    note = res.offline ? 'Couldn’t reach the food database. Enter the label once and Mizan will remember this barcode for both of you.' : 'This barcode isn’t in Open Food Facts yet. Enter the label once and Mizan will remember it for both of you.';
+  }
+  pushSheet({ type: 'foodEdit', id: null, d: draft, thenLog: topSheet() && topSheet().type === 'log', note });
+}
+
+function sheetLinkCode(s) {
+  const q = (s.q || '').trim().toLowerCase(); const words = q.split(/\s+/).filter(Boolean);
+  const list = words.length ? allFoods().filter((f) => words.every((w) => f.name.toLowerCase().includes(w))).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40) : [];
+  return `${sheetTop('Link barcode', 'Barcode ' + s.code)}
+    <p class="note">Pick the food this barcode belongs to. Next time it’ll open straight away.</p>
+    <label class="search">${icon('search', 20)}<input id="lcSearch" data-in="lcSearch" type="search" placeholder="Search your foods" value="${esc(s.q || '')}" aria-label="Search foods"></label>
+    <div id="lcResults">${linkRows(list, words.length)}</div>`;
+}
+function linkRows(list, searched) {
+  if (!searched) return '<div class="empty">Type to find the food.</div>';
+  return `<div class="list">${list.length ? list.map((f) => `<button class="item" data-act="linkPick" data-id="${esc(f.id)}"><span class="grow"><span class="name">${esc(f.name)}</span><span class="sub">${esc(f.group)}${f.barcode ? ' · has a barcode' : ''}</span></span><span class="add-btn">+</span></button>`).join('') : '<div class="empty">No foods match.</div>'}</div>`;
+}
+
 function openAmount(kind, id, extra) {
   const f = kind === 'food' ? food(id) : null;
   const s = Object.assign({ type: 'amount', kind, id, meal: (topSheet() && topSheet().meal) || autoMeal(), qty: 1, unit: -1, state: 'raw', out: false }, extra || {});
@@ -1051,6 +1239,24 @@ const A = {
     toast(next ? 'Your food log is now shared with your household' : 'Your food log is now private');
   },
   close() { closeSheets(); },
+  scanOpen() { const t = topSheet(); pushSheet({ type: 'scan', mode: 'log', meal: (t && t.meal) || autoMeal() }); },
+  scanAttach() { pushSheet({ type: 'scan', mode: 'attach' }); },
+  scanRetry() { const s = topSheet(); s.err = null; renderSheet(); },
+  scanManual() {
+    const s = topSheet(); const c = normCode(s.code);
+    if (!/^\d{8,14}$/.test(c)) { toast('Enter the 8 to 13 numbers under the barcode'); return; }
+    Scanner.stop(); handleCode(c);
+  },
+  linkOpen() { const fe = topSheet(); pushSheet({ type: 'linkCode', code: normCode(fe.d.barcode), q: fe.d.name ? fe.d.name.split(/\s+/).slice(0, 2).join(' ') : '' }); },
+  linkPick(d) {
+    const s = topSheet(); const f = food(d.id); if (!f) return;
+    const clash = foodByCode(s.code);
+    if (clash && clash.id !== f.id) { toast('That barcode is already on ' + clash.name); return; }
+    const copy = Object.assign(clone(f), { barcode: s.code, updated: Date.now() }); delete copy.deleted;
+    S.foods[f.id] = copy; Store.food(f.id);
+    S.ui.sheets.pop(); S.ui.sheets.pop();
+    if (topSheet() && topSheet().type === 'log') openAmount('food', f.id); else { renderSheet(); toast('Barcode linked to ' + f.name); }
+  },
   back() { popSheet(); },
   openLog(d) { S.ui.sheets = []; pushSheet({ type: 'log', meal: d.meal || autoMeal(), q: '', tab: 'recent' }); },
   logMeal(d) { topSheet().meal = d.m; renderSheet(); },
@@ -1142,6 +1348,12 @@ const A = {
     const id = s.id || ('u-' + uid());
     const prevBy = S.foods[id] && S.foods[id].by;
     const f = { id, name, group: d.group, rawLabel: d.basis === '100' ? (d.rawLabel || null) : null, per, raw, cooked: d.basis === '100' && d.rawLabel && d.hasCooked ? v(d.cooked) : null, units, by: prevBy || profile().name || '', updated: Date.now() };
+    const code = normCode(d.barcode || '');
+    if (code) {
+      const clash = allFoods().find((x) => x.id !== id && x.barcode && normCode(x.barcode) === code);
+      if (clash) { toast('That barcode is already on ' + clash.name); return; }
+      f.barcode = code;
+    }
     S.foods[id] = f; Store.food(id);
     if (s.forRecipe) { S.ui.sheets.pop(); S.ui.sheets.pop(); const r = topSheet(); r.d.items.push({ foodId: id, g: 100 }); renderSheet(); toast('Added to recipe'); return; }
     if (s.thenLog) { S.ui.sheets.pop(); openAmount('food', id); return; }
@@ -1305,6 +1517,8 @@ const IN = {
     renderSheet();
   },
   qaF(el) { topSheet()[el.dataset.f] = el.value; },
+  scF(el) { topSheet().code = el.value; },
+  lcSearch(el) { const s = topSheet(); s.q = el.value; const w = s.q.trim().toLowerCase().split(/\s+/).filter(Boolean); $('#lcResults').innerHTML = linkRows(w.length ? allFoods().filter((f) => w.every((x) => f.name.toLowerCase().includes(x))).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40) : [], w.length); },
   feF(el) { topSheet().d[el.dataset.f] = el.value; if (el.dataset.f === 'sG') { /* re-render to show raw toggle */ } },
   feV(el) { topSheet().d[el.dataset.set][el.dataset.k] = el.value; },
   feU(el) { topSheet().d.units[num(el.dataset.i)][el.dataset.k] = el.value; },

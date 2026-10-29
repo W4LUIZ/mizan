@@ -151,6 +151,14 @@ label.f { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font
 .progress-dots i { height: 4px; flex: 1; border-radius: 4px; background: var(--track); }
 .progress-dots i.on { background: var(--acc); }
 .note { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tile { border: 0; color: inherit; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 2px; font-weight: 700; font-size: 12.5px; font-family: inherit; cursor: pointer; text-align: center; }
+.scanbox { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 18px; overflow: hidden; background: #000; }
+.scanbox video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scanframe { position: absolute; left: 8%; right: 8%; top: 30%; bottom: 30%; border: 3px solid rgba(255,255,255,.9); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); }
+.scanframe::after { content: ''; position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--acc); box-shadow: 0 0 10px var(--acc); animation: scanline 1.6s ease-in-out infinite alternate; }
+@keyframes scanline { from { transform: translateY(-28px); } to { transform: translateY(28px); } }
+@media (prefers-reduced-motion: reduce) { .scanframe::after { animation: none; } }
 .loading { min-height: 60vh; display: grid; place-items: center; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
