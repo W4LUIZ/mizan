@@ -20,6 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const longDate = (k) => { const d = parseKey(k); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 
+const VERSION = '2026-10-29.3';
 const ICON = {
   today: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   library: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -397,7 +398,8 @@ function renderToday() {
       <span class="grow"><span class="name">${esc(w.type)}${w.km ? ' · ' + r1(w.km) + ' km' : ''}</span><span class="sub">${w.src === 'strava' ? 'Strava · ' : ''}${w.min ? r0(w.min) + ' min' : ''}${w.watch ? ' · ' + fmt(w.watch) + ' kcal on watch' : ' · estimated'}</span></span>
       <span class="num" style="color:var(--acc)">+${fmt(w.credit)}</span></button>`).join('');
   const w = S.core.weights[k];
-  const meals = mealsList().map((m) => {
+  const mBase = mealsList(); const mExtra = [...new Set(dd.entries.map((e) => e.meal))].filter((m) => m && !mBase.includes(m));
+  const meals = mBase.concat(mExtra).map((m) => {
     const es = dd.entries.filter((e) => e.meal === m);
     const sum = es.reduce((s, e) => s + e.k, 0);
     const rows = es.map((e) => `<button class="item" data-act="editEntry" data-id="${e.id}">
@@ -602,6 +604,7 @@ function renderSettings() {
         <button class="toggle" role="switch" aria-checked="${!!((S.members.find((m) => Store.user && m.user_id === Store.user.id) || {}).share_log)}" aria-label="Share my food log" data-act="toggleShare"></button></div></div>
     <div class="eyebrow">Account</div>
     <div class="list"><div class="item"><span class="grow"><b>Signed in</b><span class="sub">${esc(Store.user ? Store.user.email : '')}</span></span><button class="pill" data-act="signOut">Sign out</button></div></div>
+    <p class="small muted" style="text-align:center;margin:4px 0 0">Mizan version ${VERSION}</p>
     <div class="eyebrow">Your data</div>
     <div class="list">
       <div class="item"><span class="grow"><b>Saved</b><span class="sub wrap">Your logs, weight and targets are private to you. Foods and recipes are shared with your household.</span></span></div>
