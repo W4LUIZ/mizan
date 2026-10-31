@@ -20,7 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const longDate = (k) => { const d = parseKey(k); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 
-const VERSION = '2026-10-29.3';
+const VERSION = '2026-10-31.1';
 const ICON = {
   today: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   library: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -58,7 +58,7 @@ const STARTER = {};
 });
 
 // ---------------------------------------------------------------- state
-const freshCore = () => ({ profile: null, targets: null, settings: { accent: 'purple', maintenance: false }, favs: [], recent: [], saved: {}, weights: {}, checkins: {} });
+const freshCore = () => ({ profile: null, targets: null, settings: { accent: 'purple', maintenance: false }, favs: [], recent: [], saved: {}, weights: {}, checkins: {}, measures: {}, weeklySeen: '' });
 const S = {
   core: freshCore(),
   foods: {},     // household foods and edited starter foods, by id (shared)
@@ -120,7 +120,7 @@ const Store = {
   async loadAll() {
     const sb = this.sb; const hid = this.hh.id;
     const [d, f, r] = await Promise.all([
-      sb.from('user_docs').select('doc_id, data').eq('user_id', this.user.id),
+      sb.from('user_docs').select('doc_id, data').eq('user_id', this.user.id).not('doc_id', 'like', 'p-%'),
       sb.from('foods').select('id, data').eq('household_id', hid),
       sb.from('recipes').select('id, data').eq('household_id', hid)
     ]);
@@ -319,6 +319,7 @@ function render() {
   const body = v === 'library' ? renderLibrary() : v === 'progress' ? renderProgress() : v === 'settings' ? renderSettings() : renderToday();
   app.innerHTML = body + renderNav();
   renderSheet();
+  setTimeout(maybeWeekly, 0);
 }
 function renderNav() {
   const t = (id, label) => `<button class="tab" data-act="nav" data-v="${id}" ${S.ui.view === id ? 'aria-current="page"' : ''}>${icon(id)}${label}</button>`;
@@ -541,6 +542,8 @@ function renderProgress() {
       <div style="display:flex;gap:4px;margin-top:14px">${bars}</div>
       <div class="small muted" style="margin-top:8px">Bars show calories eaten; the line marks that day's allowance.</div></section>
     <section class="card"><h2>Where calories come from</h2>${breakdown}</section>
+    <button class="card item" data-act="weeklyOpen" style="width:100%;border:0;color:inherit;font:inherit;text-align:left"><span class="grow"><b>Weekly summary</b><span class="sub">A new one arrives every Sunday</span></span><span class="muted">${icon('right', 18)}</span></button>
+    ${renderMeasureCard()}
     ${renderCheckin()}
   </main>`;
 }
@@ -752,7 +755,7 @@ function setupValidity() {
 }
 
 // ================================================================= SHEETS
-function pushSheet(s) { S.ui.sheets.push(s); renderSheet(true); }
+function pushSheet(s) { S.ui.sheets.push(s); renderSheet(true); if (s.type === 'measure' || s.type === 'photoCompare') loadSheetPhotos(s); }
 function popSheet() { S.ui.sheets.pop(); render(); }
 function closeSheets() { S.ui.sheets = []; render(); }
 function topSheet() { return S.ui.sheets[S.ui.sheets.length - 1]; }
@@ -765,7 +768,7 @@ function renderSheet(scrollTop) {
 function renderSheetInner(scrollTop) {
   const el = $('#sheet'); const s = topSheet();
   if (!s) { Scanner.stop(); el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
-  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, targets: sheetTargets, copyFrom: sheetCopyFrom, scan: sheetScan, linkCode: sheetLinkCode }[s.type](s);
+  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, targets: sheetTargets, copyFrom: sheetCopyFrom, scan: sheetScan, linkCode: sheetLinkCode, measure: sheetMeasure, measureHistory: sheetMeasureHistory, photoCompare: sheetPhotoCompare, weekly: sheetWeekly }[s.type](s);
   el.innerHTML = `<div class="in">${html}</div>`; el.hidden = false; document.body.style.overflow = 'hidden';
   if (scrollTop) el.scrollTop = 0;
   if (s.type === 'scan') Scanner.attach(); else Scanner.stop();
@@ -816,8 +819,13 @@ function pickRow(f) {
   const sub = f.per === 'serving' ? `${fmt(v.k)} kcal per serving` : u ? `${u.l} · ${fmt(uv.k * u.g / 100)} kcal` : `100 g${f.rawLabel ? ' ' + f.rawLabel.toLowerCase() : ''} · ${fmt(v.k)} kcal`;
   return `<button class="item" data-act="pickFood" data-id="${esc(f.id)}"><span class="grow"><span class="name">${esc(f.name)}</span><span class="sub">${esc(sub)}${f.cooked ? ' · raw or cooked' : ''}</span></span><span class="add-btn">+</span></button>`;
 }
+function agoText(ts) {
+  const d = Math.round((parseKey(today()).getTime() - parseKey(dkey(new Date(ts))).getTime()) / 864e5);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
+}
 function recipeRow(r) {
   const t = recipeTotals(r).per;
+  if (r.potG) { const tt = recipeTotals(r).total; return `<button class="item" data-act="pickRecipe" data-id="${r.id}"><span class="grow"><span class="name">${esc(r.name)}<span class="badge">Recipe</span></span><span class="sub">By weight · ${fmt(tt.k * 100 / r.potG)} kcal per 100 g · P ${r0(tt.p * 100 / r.potG)} g</span></span><span class="add-btn">+</span></button>`; }
   return `<button class="item" data-act="pickRecipe" data-id="${r.id}"><span class="grow"><span class="name">${esc(r.name)}<span class="badge">Recipe</span></span><span class="sub">1 serving · ${fmt(t.k)} kcal · P ${r0(t.p)} g</span></span><span class="add-btn">+</span></button>`;
 }
 
@@ -830,8 +838,17 @@ function sheetAmount(s) {
   const favKey = (isRecipe ? 'r:' : 'f:') + s.id; const fav = S.core.favs.includes(favKey);
   let controls = '';
   if (isRecipe) {
-    controls = `<label class="f">Servings<div class="qty"><button class="icon-btn" data-act="qtyStep" data-d="-0.5" aria-label="Less">−</button><input class="input" id="qtyIn" data-in="qty" inputmode="decimal" value="${s.qty}"><button class="icon-btn" data-act="qtyStep" data-d="0.5" aria-label="More">+</button></div></label>
+    const seg = `<div class="seg" role="group" aria-label="Log by"><button data-act="amtRMode" data-v="g" aria-pressed="${!!s.rg}">Grams of the dish</button><button data-act="amtRMode" data-v="s" aria-pressed="${!s.rg}">Servings</button></div>`;
+    if (s.rg) {
+      const who = item.potBy && item.potBy !== (profile() || {}).name ? ' by ' + item.potBy : '';
+      const when = item.potAt ? ' · weighed' + who + ' ' + agoText(item.potAt) : '';
+      controls = `${seg}<div class="grid2"><label class="f">Cooked dish weight (g)<input class="input" id="potIn" data-in="pot" inputmode="decimal" value="${esc(s.potG || '')}" placeholder="e.g. 1850"></label>
+        <label class="f">On your plate (g)<div class="qty"><button class="icon-btn" data-act="qtyStep" data-d="-10" aria-label="Less">−</button><input class="input" id="qtyIn" data-in="qty" inputmode="decimal" value="${esc(s.qty)}" placeholder="g"><button class="icon-btn" data-act="qtyStep" data-d="10" aria-label="More">+</button></div></label></div>
+        <p class="note">${num(s.potG) > 0 ? `The whole dish has ${fmt(recipeTotals(item).total.k)} kcal across ${fmt(num(s.potG))} g${esc(when)}.` : 'Weigh all the cooked food once (weigh the pot, then take away the empty pot’s weight). The weight is shared, so the other person only weighs their plate.'}</p>`;
+    } else {
+      controls = `${seg}<label class="f">Servings<div class="qty"><button class="icon-btn" data-act="qtyStep" data-d="-0.5" aria-label="Less">−</button><input class="input" id="qtyIn" data-in="qty" inputmode="decimal" value="${s.qty}"><button class="icon-btn" data-act="qtyStep" data-d="0.5" aria-label="More">+</button></div></label>
       <p class="note">This recipe makes ${r1(item.servings)} servings.</p>`;
+    }
   } else {
     const f = item;
     const stateSeg = f.cooked && f.per !== 'serving' ? `<div class="seg" role="group" aria-label="Weighed as"><button data-act="amtState" data-v="raw" aria-pressed="${s.state !== 'cooked'}">${f.rawLabel || 'Raw'}</button><button data-act="amtState" data-v="cooked" aria-pressed="${s.state === 'cooked'}">Cooked</button></div>` : '';
@@ -857,12 +874,16 @@ function macroBlock(m) {
     <div class="trio"><div><div class="num" style="color:var(--p)">${r1(m.p)} g</div><div class="small muted">Protein</div></div><div><div class="num" style="color:var(--c)">${r1(m.c)} g</div><div class="small muted">Carbs</div></div><div><div class="num" style="color:var(--f)">${r1(m.f)} g</div><div class="small muted">Fat</div></div></div>`;
 }
 function amountMacros(s) {
-  if (s.kind === 'recipe') { const r = S.recipes[s.id]; if (!r) return { k: 0, p: 0, c: 0, f: 0 }; const per = recipeTotals(r).per; const q = num(s.qty); return { k: per.k * q, p: per.p * q, c: per.c * q, f: per.f * q }; }
+  if (s.kind === 'recipe') {
+    const r = S.recipes[s.id]; if (!r) return { k: 0, p: 0, c: 0, f: 0 }; const t = recipeTotals(r);
+    if (s.rg) { const pot = num(s.potG); if (!(pot > 0)) return { k: 0, p: 0, c: 0, f: 0 }; const x = num(s.qty) / pot; return { k: t.total.k * x, p: t.total.p * x, c: t.total.c * x, f: t.total.f * x }; }
+    const per = t.per; const q = num(s.qty); return { k: per.k * q, p: per.p * q, c: per.c * q, f: per.f * q };
+  }
   const f = food(s.id); if (!f) return { k: 0, p: 0, c: 0, f: 0 };
   return macrosOf(f, s.state, num(s.qty), f.per === 'serving' ? -1 : s.unit);
 }
 function entryDetail(s) {
-  if (s.kind === 'recipe') return `${r1(num(s.qty))} serving${num(s.qty) === 1 ? '' : 's'}`;
+  if (s.kind === 'recipe') return s.rg ? `${r0(num(s.qty))} g of a ${fmt(num(s.potG))} g dish` : `${r1(num(s.qty))} serving${num(s.qty) === 1 ? '' : 's'}`;
   const f = food(s.id);
   if (f.per === 'serving') return `${r1(num(s.qty))} serving${num(s.qty) === 1 ? '' : 's'}`;
   const st = s.state === 'cooked' ? 'cooked' : (f.rawLabel || '').toLowerCase();
@@ -952,8 +973,10 @@ function sheetRecipe(s) {
     <section class="card" id="reTotals"><div class="row"><div class="grow"><div class="small muted">Per serving</div><div class="num" style="font-size:26px">${fmt(tot.per.k)} kcal</div></div>
       <div style="text-align:right" class="small muted">Whole dish<br><b class="num" style="color:var(--fg)">${fmt(tot.total.k)} kcal</b></div></div>
       <div class="row" style="gap:6px;margin-top:8px"><span class="mchip" style="color:var(--p)">P ${r0(tot.per.p)} g</span><span class="mchip" style="color:var(--c)">C ${r0(tot.per.c)} g</span><span class="mchip" style="color:var(--f)">F ${r0(tot.per.f)} g</span></div></section>
+    <label class="f">Cooked dish weight in grams (optional)<input class="input" id="re-pot" data-in="reF" data-f="potG" inputmode="decimal" value="${esc(d.potG || '')}" placeholder="Weigh all the food after cooking"></label>
+    <p class="note" style="margin-top:-4px">With this, each of you logs the grams on your plate instead of guessing servings. You can also enter or change it when logging, since it changes each time you cook.</p>
     <button class="btn block" data-act="reSave" ${d.name && d.items.length ? '' : 'disabled'} id="reSaveBtn">Save recipe</button>
-    ${s.id ? `<button class="btn ghost block" data-act="reLog">Log a serving</button><button class="btn danger block" data-act="reDelete">Delete recipe</button>` : ''}`;
+    ${s.id ? `<button class="btn ghost block" data-act="reLog">Log it</button><button class="btn danger block" data-act="reDelete">Delete recipe</button>` : ''}`;
 }
 function sheetPickIng(s) {
   return `${sheetTop('Add ingredient', 'Recipe')}
@@ -1204,9 +1227,174 @@ function linkRows(list, searched) {
   return `<div class="list">${list.length ? list.map((f) => `<button class="item" data-act="linkPick" data-id="${esc(f.id)}"><span class="grow"><span class="name">${esc(f.name)}</span><span class="sub">${esc(f.group)}${f.barcode ? ' · has a barcode' : ''}</span></span><span class="add-btn">+</span></button>`).join('') : '<div class="empty">No foods match.</div>'}</div>`;
 }
 
+// ================================================================= BODY MEASUREMENTS + PHOTOS
+const MEASURES = [['waist', 'Waist'], ['hips', 'Hips'], ['chest', 'Chest'], ['arm', 'Arm'], ['thigh', 'Thigh']];
+const PHOTO_SLOTS = [['front', 'Front'], ['side', 'Side']];
+const Photos = {
+  cache: {},
+  id(date, slot) { return 'p-' + date + '-' + slot; },
+  async get(date, slot) {
+    const id = this.id(date, slot);
+    if (this.cache[id] !== undefined) return this.cache[id];
+    const { data, error } = await Store.sb.from('user_docs').select('data').eq('user_id', Store.user.id).eq('doc_id', id).maybeSingle();
+    if (error) return null;
+    this.cache[id] = data && data.data ? data.data.img : null; return this.cache[id];
+  },
+  async put(date, slot, img) {
+    const id = this.id(date, slot);
+    const { error } = await Store.sb.from('user_docs').upsert([{ user_id: Store.user.id, doc_id: id, data: { img }, updated_at: new Date().toISOString() }]);
+    if (error) throw error; this.cache[id] = img;
+  },
+  async del(date, slot) {
+    const id = this.id(date, slot);
+    const { error } = await Store.sb.from('user_docs').delete().eq('user_id', Store.user.id).eq('doc_id', id);
+    if (error) throw error; this.cache[id] = null;
+  }
+};
+function shrinkImage(file, max) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onload = () => {
+      const sc = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas');
+      c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('image')); };
+    img.src = url;
+  });
+}
+function measureDates() { return Object.keys(S.core.measures || {}).sort(); }
+function measureDelta(key, date) {
+  const ds = measureDates().filter((d) => d < date && S.core.measures[d][key] > 0);
+  const cur = (S.core.measures[date] || {})[key];
+  if (!(cur > 0) || !ds.length) return null;
+  return cur - S.core.measures[ds[ds.length - 1]][key];
+}
+function renderMeasureCard() {
+  const ds = measureDates(); const last = ds[ds.length - 1]; const first = ds[0];
+  const since = last ? Math.round((parseKey(today()) - parseKey(last)) / 864e5) : null;
+  let body;
+  if (!last) body = '<p class="note" style="margin:6px 0 0">Optional. Once a week is plenty. Measurements keep showing progress when the scale moves slowly.</p>';
+  else {
+    const rows = MEASURES.filter(([k]) => S.core.measures[last][k] > 0).map(([k, l]) => {
+      const v = S.core.measures[last][k]; const f0 = (S.core.measures[first] || {})[k];
+      const ch = first !== last && f0 > 0 ? v - f0 : null;
+      return `<div class="row small" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="grow muted" style="font-weight:700">${l}</span><b class="num">${r1(v)} cm</b><span class="num" style="width:78px;text-align:right;color:${ch == null ? 'var(--muted)' : ch <= 0 ? 'var(--good)' : 'var(--bad)'}">${ch == null ? '' : (ch > 0 ? '+' : '−') + Math.abs(r1(ch)) + ' cm'}</span></div>`;
+    }).join('');
+    const withPhotos = ds.filter((d) => (S.core.measures[d].photos || []).length);
+    body = `<div class="small muted" style="margin:4px 0 6px">Latest ${longDate(last)}${first !== last ? ' · change since ' + parseKey(first).getDate() + ' ' + MONTHS[parseKey(first).getMonth()].slice(0, 3) : ''}</div>${rows || '<p class="note">Photos only.</p>'}
+      <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="link" data-act="measureHistory">History</button>${withPhotos.length >= 2 ? '<button class="link" data-act="photoCompare">Compare photos</button>' : ''}</div>`;
+  }
+  return `<section class="card"><div class="row"><h2 class="grow">Body measurements</h2><button class="pill" data-act="measureOpen">+ Measure</button></div>
+    ${since != null && since >= 7 ? `<div class="small" style="color:var(--acc);font-weight:700;margin-top:4px">It’s been ${since} days. Time for this week’s check?</div>` : ''}${body}</section>`;
+}
+function sheetMeasure(s) {
+  const d = s.d;
+  const slots = PHOTO_SLOTS.map(([k, l]) => {
+    const img = s.img[k];
+    return `<div class="photo-slot">${img === 'loading' ? '<span class="small muted">Loading…</span>' : img ? `<img src="${img}" alt="${l} photo"><button class="icon-btn photo-x" data-act="photoRemove" data-slot="${k}" aria-label="Remove ${l} photo">${icon('x', 16)}</button>` :
+      `<label class="photo-add"><input type="file" accept="image/*" data-in="photoPick" data-slot="${k}" style="display:none">${icon('plus', 22)}<span>${l}</span></label>`}</div>`;
+  }).join('');
+  return `${sheetTop('Measurements', longDate(s.date))}
+    <p class="note" style="margin:0">All optional. Measure in the morning, relaxed, tape snug but not tight. Waist at the level of your belly button.</p>
+    <div class="grid2">${MEASURES.map(([k, l]) => `<label class="f">${l} (cm)<input class="input" id="ms-${k}" data-in="msF" data-f="${k}" inputmode="decimal" value="${esc(d[k] || '')}"></label>`).join('')}</div>
+    <div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">Photos (optional, private to you)</div>
+    <div class="photo-grid">${slots}</div>
+    <p class="note" style="margin:0">Same spot, same light, same clothes each week makes the comparison fair. Measurements and photos stay private to your account, even with log sharing on.</p>
+    <button class="btn block" data-act="measureSave">Save</button>
+    ${S.core.measures && S.core.measures[s.date] ? '<button class="btn danger block" data-act="measureDelete">Delete this check</button>' : ''}`;
+}
+function sheetMeasureHistory() {
+  const ds = measureDates().slice().reverse();
+  return `${sheetTop('Measurement history', ds.length + ' check' + (ds.length === 1 ? '' : 's'))}
+    <div class="list">${ds.map((d) => { const m = S.core.measures[d]; const parts = MEASURES.filter(([k]) => m[k] > 0).map(([k, l]) => l + ' ' + r1(m[k]));
+      return `<button class="item" data-act="measureOpen" data-date="${d}"><span class="grow"><span class="name">${longDate(d)}</span><span class="sub wrap">${esc(parts.join(' · ') || 'No measurements')}${(m.photos || []).length ? ' · ' + m.photos.length + ' photo' + (m.photos.length > 1 ? 's' : '') : ''}</span></span><span class="muted">${icon('right', 18)}</span></button>`; }).join('')}</div>`;
+}
+function sheetPhotoCompare(s) {
+  const opt = (sel, which) => s.dates.map((d) => `<option value="${d}" ${sel === d ? 'selected' : ''}>${longDate(d)}</option>`).join('');
+  const col = (date, which) => `<div style="flex:1;min-width:0"><select class="input" data-in="pcDate" data-w="${which}" aria-label="${which === 'a' ? 'Earlier' : 'Later'} date">${opt(date)}</select>
+    <div class="photo-slot" style="margin-top:8px">${s.img[which] === 'loading' ? '<span class="small muted">Loading…</span>' : s.img[which] ? `<img src="${s.img[which]}" alt="Photo ${longDate(date)}">` : '<span class="small muted">No photo</span>'}</div></div>`;
+  return `${sheetTop('Compare photos', 'Private to you')}
+    <div class="seg" role="group">${PHOTO_SLOTS.map(([k, l]) => `<button data-act="pcSlot" data-v="${k}" aria-pressed="${s.slot === k}">${l}</button>`).join('')}</div>
+    <div class="row" style="gap:10px;align-items:flex-start">${col(s.a, 'a')}${col(s.b, 'b')}</div>`;
+}
+async function loadSheetPhotos(s) {
+  if (s.type === 'measure') {
+    const have = (S.core.measures[s.date] || {}).photos || [];
+    for (const [k] of PHOTO_SLOTS) if (have.includes(k) && s.img[k] === undefined) {
+      s.img[k] = 'loading'; renderSheet();
+      const v = await Photos.get(s.date, k); if (s.img[k] === 'loading') s.img[k] = v; if (topSheet() === s) renderSheet();
+    }
+  }
+  if (s.type === 'photoCompare') {
+    for (const w of ['a', 'b']) {
+      const date = s[w]; s.img[w] = 'loading'; if (topSheet() === s) renderSheet();
+      const v = await Photos.get(date, s.slot); if (s[w] === date) s.img[w] = v; if (topSheet() === s) renderSheet();
+    }
+  }
+}
+
+// ================================================================= WEEKLY SUMMARY (weeks run Sunday to Saturday)
+function weekSummary(start) {
+  const days = []; for (let i = 0; i < 7; i++) days.push(addDays(start, i));
+  const logged = days.filter((k) => totalsFor(k).k > 400);
+  const avg = (fn) => logged.length ? logged.reduce((s, k) => s + fn(k), 0) / logged.length : 0;
+  const eaten = avg((k) => totalsFor(k).k); const allow = avg((k) => baseFor(k).kcal + exerciseFor(k));
+  const prot = avg((k) => totalsFor(k).p); const protT = avg((k) => baseFor(k).protein);
+  const protDays = logged.filter((k) => totalsFor(k).p >= baseFor(k).protein * 0.95).length;
+  const series = trendSeries(); const at = (k) => { let t = null; series.forEach((x) => { if (x.k <= k && x.t != null) t = x.t; }); return t; };
+  const tEnd = at(days[6]); const tPrev = at(addDays(start, -1));
+  const weighIns = days.filter((k) => S.core.weights[k] != null).length;
+  const ws = days.flatMap((k) => dayData(k).workouts);
+  const runKm = ws.filter((w) => w.type === 'Run').reduce((s, w) => s + (num(w.km) || 0), 0);
+  const outMeals = new Set(); const counts = {};
+  days.forEach((k) => dayData(k).entries.forEach((e) => { if (e.out) outMeals.add(k + e.meal); counts[e.name] = (counts[e.name] || 0) + 1; }));
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).filter((x) => x[1] > 1);
+  const mDates = measureDates().filter((d) => d >= start && d <= days[6]); const mLast = mDates[mDates.length - 1];
+  const waistCh = mLast ? measureDelta('waist', mLast) : null;
+  return { start, end: days[6], logged: logged.length, eaten, allow, prot, protT, protDays, tEnd, tPrev, weighIns, workouts: ws.length, minutes: ws.reduce((s, w) => s + (num(w.min) || 0), 0), runKm, burned: ws.reduce((s, w) => s + (w.credit || 0), 0), out: outMeals.size, top, waist: mLast ? S.core.measures[mLast].waist : null, waistCh };
+}
+function weekHasData(start) { for (let i = 0; i < 7; i++) { const k = addDays(start, i); if (dayData(k).entries.length || S.core.weights[k] != null) return true; } return false; }
+function sheetWeekly(s) {
+  const w = weekSummary(s.start); const p = profile();
+  const range = `${parseKey(w.start).getDate()} ${MONTHS[parseKey(w.start).getMonth()].slice(0, 3)} – ${parseKey(w.end).getDate()} ${MONTHS[parseKey(w.end).getMonth()].slice(0, 3)}`;
+  const diff = w.eaten - w.allow; const tCh = w.tEnd != null && w.tPrev != null ? w.tEnd - w.tPrev : null;
+  const goalRate = p.goal === 'lose' ? -p.pace : p.goal === 'gain' ? p.pace : 0;
+  let headline;
+  if (w.logged < 3) headline = 'A light logging week. Even rough logs on most days make next week’s summary more useful.';
+  else if (tCh != null && p.goal === 'lose') headline = tCh <= goalRate * 0.6 ? 'On track. Your trend weight went down as planned.' : tCh < 0 ? 'Moving the right way, a little slower than your goal pace.' : 'Trend weight held or rose this week. One week isn’t a verdict; keep logging and watch the next one.';
+  else headline = diff <= 0 ? 'You stayed within your allowance on average.' : 'You ate a bit above your allowance on average.';
+  const stat = (label, val, sub) => `<div class="card" style="padding:12px;margin:0"><div class="small muted" style="font-weight:700">${label}</div><div class="num" style="font-size:22px;line-height:1.2">${val}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div>`;
+  const prevStart = addDays(s.start, -7); const nextStart = addDays(s.start, 7); const thisWeek = weekKey(today());
+  return `${sheetTop('Your week', range, true)}
+    <section class="card" style="margin:0"><b>${esc(headline)}</b></section>
+    <div class="grid2">
+      ${stat('Avg eaten', w.logged ? fmt(w.eaten) + ' kcal' : '—', w.logged ? (diff <= 0 ? fmt(-diff) + ' under allowance' : fmt(diff) + ' over allowance') : 'No days logged')}
+      ${stat('Trend weight', w.tEnd != null ? r1(w.tEnd) + ' kg' : '—', tCh != null ? (tCh > 0 ? '+' : '−') + Math.abs(r1(tCh)) + ' kg this week' : w.weighIns + ' weigh-ins')}
+      ${stat('Avg protein', w.logged ? r0(w.prot) + ' g' : '—', w.logged ? 'Target hit ' + w.protDays + ' of ' + w.logged + ' days' : '')}
+      ${stat('Days logged', w.logged + ' of 7', w.weighIns + ' weigh-in' + (w.weighIns === 1 ? '' : 's'))}
+      ${stat('Training', w.workouts + ' session' + (w.workouts === 1 ? '' : 's'), [w.minutes ? r0(w.minutes) + ' min' : '', w.runKm ? r1(w.runKm) + ' km run' : '', w.burned ? fmt(w.burned) + ' kcal credited' : ''].filter(Boolean).join(' · '))}
+      ${stat('Eating out', w.out + ' meal' + (w.out === 1 ? '' : 's'), '')}
+    </div>
+    ${w.waist ? `<section class="card" style="margin:0"><div class="small muted" style="font-weight:700">Waist</div><div class="num" style="font-size:20px">${r1(w.waist)} cm${w.waistCh != null ? ` <span class="small" style="color:${w.waistCh <= 0 ? 'var(--good)' : 'var(--bad)'}">${w.waistCh > 0 ? '+' : '−'}${Math.abs(r1(w.waistCh))} cm</span>` : ''}</div></section>` : ''}
+    ${w.top.length ? `<div class="small muted" style="font-weight:700">Most logged</div><div class="list">${w.top.map(([n, c]) => `<div class="item"><span class="grow name">${esc(n)}</span><span class="small muted">${c}×</span></div>`).join('')}</div>` : ''}
+    <div class="row" style="justify-content:space-between"><button class="link" data-act="weekNav" data-k="${prevStart}">← Earlier week</button>${nextStart < thisWeek ? `<button class="link" data-act="weekNav" data-k="${nextStart}">Later week →</button>` : ''}</div>
+    <button class="btn block" data-act="close">Done</button>`;
+}
+function maybeWeekly() {
+  if (S.ui.phase !== 'app' || !profile() || S.ui.editing || topSheet() || S.ui.viewing || S.ui.weeklyAuto) return;
+  const last = addDays(weekKey(today()), -7);
+  if (!S.core.weeklySeen) { S.core.weeklySeen = last; save('core'); return; } // first run: start with next Sunday
+  if (S.core.weeklySeen >= last || !weekHasData(last)) return;
+  S.ui.weeklyAuto = true; S.core.weeklySeen = last; save('core'); Store.flush();
+  pushSheet({ type: 'weekly', start: last });
+}
+
 function openAmount(kind, id, extra) {
   const f = kind === 'food' ? food(id) : null;
   const s = Object.assign({ type: 'amount', kind, id, meal: (topSheet() && topSheet().meal) || autoMeal(), qty: 1, unit: -1, state: 'raw', out: false }, extra || {});
+  if (kind === 'recipe' && S.recipes[id] && S.recipes[id].potG && !(extra && extra.rg === false)) { s.rg = true; s.potG = S.recipes[id].potG; s.qty = extra && extra.rg ? s.qty : ''; }
   if (f && !extra) { if (f.per === 'serving') s.qty = 1; else if (f.units.length) { s.unit = 0; s.qty = 1; const us = unitLabelState(f.units[0].l); if (us) s.state = us; } else s.qty = 100; }
   pushSheet(s);
 }
@@ -1279,6 +1467,11 @@ const A = {
     m.items.forEach((e) => dd.entries.push(Object.assign({}, e, { id: uid(), meal: s.meal })));
     saveDay(S.ui.day); toast(`Logged ${m.name}`); closeSheets();
   },
+  amtRMode(d) {
+    const s = topSheet(); const r = S.recipes[s.id]; const g = d.v === 'g'; if (g === !!s.rg) return;
+    s.rg = g; if (g) { s.potG = s.potG || (r && r.potG) || ''; s.qty = ''; } else s.qty = 1;
+    renderSheet();
+  },
   qtyStep(d) { const s = topSheet(); s.qty = Math.max(0, r1(num(s.qty) + num(d.d))); const i = $('#qtyIn'); if (i) i.value = s.qty; refreshAmount(); },
   amtState(d) { const s = topSheet(); const f = food(s.id); s.state = d.v; if (s.unit >= 0) { const us = unitLabelState(f.units[s.unit].l); if (us && us !== d.v) { s.unit = -1; s.qty = 100; } } renderSheet(); },
   amtOut() { const s = topSheet(); s.out = !s.out; renderSheet(); },
@@ -1289,10 +1482,12 @@ const A = {
   },
   amtSave() {
     const s = topSheet(); const m = amountMacros(s);
-    if (!(num(s.qty) > 0)) { toast('Enter an amount above zero'); return; }
+    if (s.rg && !(num(s.potG) > 0)) { toast('Enter the cooked dish weight'); return; }
+    if (!(num(s.qty) > 0)) { toast(s.rg ? 'Enter the grams on your plate' : 'Enter an amount above zero'); return; }
     const item = s.kind === 'recipe' ? S.recipes[s.id] : food(s.id);
+    if (s.rg && num(s.potG) !== num(item.potG)) { item.potG = num(s.potG); item.potAt = Date.now(); item.potBy = profile().name || ''; item.updated = Date.now(); Store.recipe(item.id); }
     const entry = { id: s.entryId || uid(), meal: s.meal, name: item.name, detail: entryDetail(s), k: m.k, p: m.p, c: m.c, f: m.f, out: !!s.out, group: s.kind === 'recipe' ? 'Dishes' : item.group,
-      src: { kind: s.kind, id: s.id, qty: num(s.qty), unit: s.unit, state: s.state } };
+      src: Object.assign({ kind: s.kind, id: s.id, qty: num(s.qty), unit: s.unit, state: s.state }, s.rg ? { rg: true, potG: num(s.potG) } : {}) };
     const k = s.day || S.ui.day; const dd = dayData(k, true);
     if (s.type === 'entry') { const i = dd.entries.findIndex((e) => e.id === s.entryId); if (i >= 0) dd.entries[i] = entry; }
     else dd.entries.push(entry);
@@ -1304,7 +1499,7 @@ const A = {
     if (!e.src || e.src.kind === 'quick' || (e.src.kind === 'food' && !food(e.src.id)) || (e.src.kind === 'recipe' && !S.recipes[e.src.id])) {
       pushSheet({ type: 'quick', meal: e.meal, entryId: e.id, name: e.name, k: r0(e.k), p: r1(e.p), c: r1(e.c), f: r1(e.f), out: e.out }); return;
     }
-    pushSheet({ type: 'entry', kind: e.src.kind, id: e.src.id, meal: e.meal, qty: e.src.qty, unit: e.src.unit, state: e.src.state || 'raw', out: e.out, entryId: e.id, day: S.ui.day });
+    pushSheet({ type: 'entry', kind: e.src.kind, id: e.src.id, meal: e.meal, qty: e.src.qty, unit: e.src.unit, state: e.src.state || 'raw', out: e.out, entryId: e.id, day: S.ui.day, rg: !!e.src.rg, potG: e.src.potG });
   },
   entryDelete() {
     const s = topSheet(); const k = s.day || S.ui.day; const dd = dayData(k, true);
@@ -1312,6 +1507,38 @@ const A = {
   },
   savedAsk(d) { const s = topSheet(); s.delSaved = d.id; $('#logResults').innerHTML = logResults(s); },
   savedDelete(d) { const s = topSheet(); const m = S.core.saved[d.id]; delete S.core.saved[d.id]; s.delSaved = null; save('core'); $('#logResults').innerHTML = logResults(s); toast('Deleted ' + (m ? m.name : 'meal')); },
+  measureOpen(d) {
+    const date = d.date || today(); const m = (S.core.measures || {})[date] || {};
+    pushSheet({ type: 'measure', date, d: Object.assign({}, m), img: {}, photos: (m.photos || []).slice() });
+  },
+  measureHistory() { pushSheet({ type: 'measureHistory' }); },
+  measureSave() {
+    const s = topSheet(); const out = {}; let any = false; let bad = false;
+    MEASURES.forEach(([k]) => { const v = num(s.d[k]); if (v > 0) { if (v < 15 || v > 250) bad = true; else { out[k] = r1(v); any = true; } } });
+    if (bad) { toast('Check the numbers. Measurements are in centimetres'); return; }
+    if (s.photos.length) out.photos = s.photos.slice();
+    if (!any && !s.photos.length) { toast('Enter at least one measurement or photo'); return; }
+    S.core.measures = S.core.measures || {}; S.core.measures[s.date] = out; save('core'); toast('Saved'); popSheet();
+  },
+  async measureDelete() {
+    const s = topSheet(); const m = S.core.measures[s.date] || {};
+    try { for (const k of m.photos || []) await Photos.del(s.date, k); } catch (e) { toast('Couldn’t delete the photos. Check your connection'); return; }
+    delete S.core.measures[s.date]; save('core'); toast('Deleted'); popSheet();
+  },
+  async photoRemove(d) {
+    const s = topSheet();
+    try { await Photos.del(s.date, d.slot); } catch (e) { toast('Couldn’t remove the photo. Check your connection'); return; }
+    s.img[d.slot] = null; s.photos = s.photos.filter((x) => x !== d.slot);
+    if (S.core.measures[s.date]) { S.core.measures[s.date].photos = s.photos.slice(); save('core'); }
+    renderSheet();
+  },
+  photoCompare() {
+    const ds = measureDates().filter((d) => (S.core.measures[d].photos || []).length);
+    pushSheet({ type: 'photoCompare', dates: ds, a: ds[0], b: ds[ds.length - 1], slot: 'front', img: {} });
+  },
+  pcSlot(d) { const s = topSheet(); s.slot = d.v; s.img = {}; loadSheetPhotos(s); },
+  weeklyOpen() { const last = addDays(weekKey(today()), -7); pushSheet({ type: 'weekly', start: last }); },
+  weekNav(d) { topSheet().start = d.k; renderSheet(true); },
   qaOut() { const s = topSheet(); s.out = s.out === false ? true : false; renderSheet(); },
   qaSave() {
     const s = topSheet(); if (!(num(s.k) > 0)) { toast('Enter the calories'); return; }
@@ -1374,16 +1601,18 @@ const A = {
   },
   // recipes
   newRecipe() { pushSheet({ type: 'recipe', id: null, d: { name: '', servings: 4, items: [] } }); },
-  openRecipe(d) { const r = S.recipes[d.id]; if (!r) return; pushSheet({ type: 'recipe', id: d.id, d: JSON.parse(JSON.stringify({ name: r.name, servings: r.servings, items: r.items })) }); },
+  openRecipe(d) { const r = S.recipes[d.id]; if (!r) return; pushSheet({ type: 'recipe', id: d.id, d: JSON.parse(JSON.stringify({ name: r.name, servings: r.servings, items: r.items, potG: r.potG || '' })) }); },
   riAdd() { pushSheet({ type: 'pickIng', q: '' }); },
   ingPick(d) { S.ui.sheets.pop(); const r = topSheet(); const f = food(d.id); r.d.items.push({ foodId: d.id, g: f && f.units[0] && !unitLabelState(f.units[0].l) ? f.units[0].g : 100 }); renderSheet(); },
   riDel(d) { topSheet().d.items.splice(num(d.i), 1); renderSheet(); },
   reSave() {
     const s = topSheet(); const d = s.d; const id = s.id || ('r-' + uid());
-    S.recipes[id] = { id, name: d.name.trim(), servings: num(d.servings) || 1, items: d.items.map((it) => ({ foodId: it.foodId, g: num(it.g) })), by: (S.recipes[id] && S.recipes[id].by) || profile().name || '', updated: Date.now() };
+    const prev = S.recipes[id] || {}; const pot = num(d.potG) > 0 ? num(d.potG) : null;
+    S.recipes[id] = { id, name: d.name.trim(), servings: num(d.servings) || 1, items: d.items.map((it) => ({ foodId: it.foodId, g: num(it.g) })), by: prev.by || profile().name || '', updated: Date.now() };
+    if (pot) Object.assign(S.recipes[id], { potG: pot, potAt: pot === prev.potG ? prev.potAt : Date.now(), potBy: pot === prev.potG ? prev.potBy : (profile().name || '') });
     Store.recipe(id); toast('Recipe saved'); popSheet();
   },
-  reLog() { const s = topSheet(); S.ui.sheets = [{ type: 'log', meal: autoMeal(), q: '' }]; openAmount('recipe', s.id, { qty: 1 }); },
+  reLog() { const s = topSheet(); S.ui.sheets = [{ type: 'log', meal: autoMeal(), q: '' }]; openAmount('recipe', s.id); },
   reDelete() { const s = topSheet(); delete S.recipes[s.id]; Store.recipe(s.id, true); toast('Recipe deleted'); popSheet(); },
   // workouts
   addWorkout() { const p = profile(); pushSheet({ type: 'workout', id: null, d: { type: (p.training && p.training[0]) || 'Run', min: '', km: '', watch: '' } }); },
@@ -1517,12 +1746,26 @@ const IN = {
   logSearch(el) { const s = topSheet(); s.q = el.value; $('#logResults').innerHTML = logResults(s); },
   ingSearch(el) { const s = topSheet(); s.q = el.value; $('#ingResults').innerHTML = ingResults(s); },
   qty(el) { topSheet().qty = el.value; refreshAmount(); },
+  pot(el) { topSheet().potG = el.value; refreshAmount(); },
   unit(el) {
     const s = topSheet(); const f = food(s.id); s.unit = parseInt(el.value, 10);
     if (s.unit >= 0) { s.qty = 1; const us = unitLabelState(f.units[s.unit].l); if (us) s.state = us; } else s.qty = 100;
     renderSheet();
   },
   qaF(el) { topSheet()[el.dataset.f] = el.value; },
+  msF(el) { topSheet().d[el.dataset.f] = el.value; },
+  pcDate(el) { const s = topSheet(); s[el.dataset.w] = el.value; s.img = {}; loadSheetPhotos(s); },
+  async photoPick(el) {
+    const file = el.files && el.files[0]; const s = topSheet(); const slot = el.dataset.slot; if (!file || !s) return;
+    s.img[slot] = 'loading'; renderSheet();
+    try {
+      const img = await shrinkImage(file, 900); await Photos.put(s.date, slot, img);
+      s.img[slot] = img; if (!s.photos.includes(slot)) s.photos.push(slot);
+      S.core.measures = S.core.measures || {}; S.core.measures[s.date] = Object.assign(S.core.measures[s.date] || {}, { photos: s.photos.slice() }); save('core');
+    } catch (e) { s.img[slot] = null; toast('Couldn’t save the photo. Check your connection'); }
+    if (topSheet() === s) renderSheet();
+  },
+
   scF(el) { topSheet().code = el.value; },
   lcSearch(el) { const s = topSheet(); s.q = el.value; const w = s.q.trim().toLowerCase().split(/\s+/).filter(Boolean); $('#lcResults').innerHTML = linkRows(w.length ? allFoods().filter((f) => w.every((x) => f.name.toLowerCase().includes(x))).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40) : [], w.length); },
   feF(el) { topSheet().d[el.dataset.f] = el.value; if (el.dataset.f === 'sG') { /* re-render to show raw toggle */ } },

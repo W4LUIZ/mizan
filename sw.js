@@ -1,4 +1,4 @@
-/* Mizan service worker (2026-10-29.3). Always checks the network for the newest files,
+/* Mizan service worker (2026-10-31.1). Always checks the network for the newest files,
    so updates show up on the next open; falls back to the last copy when offline.
    Phase 4 adds reminder notifications here. */
 const CACHE = 'mizan-files';
