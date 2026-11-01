@@ -162,6 +162,11 @@ label.f { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font
 .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
 .photo-x { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); color: #fff; }
 .photo-add { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--acc); font-weight: 700; font-size: 13px; cursor: pointer; width: 100%; height: 100%; justify-content: center; border: 2px dashed var(--line); border-radius: 14px; }
+.mg { display: flex; gap: 14px; align-items: center; background: var(--card); border-radius: 18px; padding: 12px; }
+.mg-fig { flex: none; width: 104px; height: 156px; }
+.mg-txt { flex: 1; min-width: 0; }
+.mg-line ellipse { fill: none; stroke: var(--muted); stroke-opacity: .12; stroke-width: 2; stroke-dasharray: 3 3; }
+.mg-line.on ellipse { stroke: var(--acc); stroke-opacity: 1; stroke-width: 3; stroke-dasharray: none; }
 @keyframes scanline { from { transform: translateY(-28px); } to { transform: translateY(28px); } }
 @media (prefers-reduced-motion: reduce) { .scanframe::after { animation: none; } }
 .loading { min-height: 60vh; display: grid; place-items: center; color: var(--muted); }
@@ -178,9 +183,9 @@ form { margin: 0; }
 <div id="sheet" class="sheet" role="dialog" aria-modal="true" hidden></div>
 <div id="toast" class="toast" hidden></div>
 
-<script src="supabase.js?v=2026-10-31.1"></script>
-<script src="config.js?v=2026-10-31.1"></script>
-<script src="foods.js?v=2026-10-31.1"></script>
-<script src="app.js?v=2026-10-31.1"></script>
+<script src="supabase.js?v=2026-11-01.1"></script>
+<script src="config.js?v=2026-11-01.1"></script>
+<script src="foods.js?v=2026-11-01.1"></script>
+<script src="app.js?v=2026-11-01.1"></script>
 </body>
 </html>

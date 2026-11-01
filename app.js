@@ -20,7 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const longDate = (k) => { const d = parseKey(k); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 
-const VERSION = '2026-10-31.1';
+const VERSION = '2026-11-01.1';
 const ICON = {
   today: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   library: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -1289,6 +1289,38 @@ function renderMeasureCard() {
   return `<section class="card"><div class="row"><h2 class="grow">Body measurements</h2><button class="pill" data-act="measureOpen">+ Measure</button></div>
     ${since != null && since >= 7 ? `<div class="small" style="color:var(--acc);font-weight:700;margin-top:4px">It’s been ${since} days. Time for this week’s check?</div>` : ''}${body}</section>`;
 }
+
+const MEASURE_GUIDE = {
+  waist: { tip: 'Halfway between your lowest rib and the top of your hip bone, usually at or just above the belly button. Stand relaxed and measure after breathing out normally. Don’t suck in.' },
+  hips: { tip: 'Around the widest part of your bottom, with your feet together. Look in a mirror to keep the tape level all the way round.' },
+  chest: { tip: 'Around the fullest part of the chest, under the armpits and across the nipples. Arms relaxed at your sides, measure after a normal breath out.' },
+  arm: { tip: 'Upper arm, halfway between the tip of the shoulder and the elbow. Let the arm hang relaxed, not flexed. Use the same arm every time.' },
+  thigh: { tip: 'Halfway between the crease at the top of your leg and the top of the kneecap. Stand with weight on both feet. Use the same leg every time.' }
+};
+function measureFigure(active) {
+  const line = (k, el) => `<g class="mg-line${k === active ? ' on' : ''}">${el}</g>`;
+  const limb = (d, w) => `<path d="${d}" fill="none" stroke="var(--muted)" stroke-width="${w + 3}" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/><path d="${d}" fill="none" stroke="var(--card2)" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<svg viewBox="0 0 200 300" width="100%" height="100%" role="img" aria-label="Where to measure your ${active}">
+    ${limb('M64 66 L52 116 L46 166', 15)}${limb('M136 66 L148 116 L154 166', 15)}
+    ${limb('M86 182 L84 238 L84 290', 24)}${limb('M114 182 L116 238 L116 290', 24)}
+    <path d="M68 56 Q100 48 132 56 L138 66 Q136 104 125 136 Q134 156 136 176 L132 190 L68 190 L64 176 Q66 156 75 136 Q64 104 62 66 Z" fill="var(--card2)" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.5"/>
+    <rect x="92" y="38" width="16" height="16" rx="5" fill="var(--card2)" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.5"/>
+    <circle cx="100" cy="26" r="17" fill="var(--card2)" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.5"/>
+    <path d="M78 116 Q100 124 122 116" fill="none" stroke="var(--muted)" stroke-opacity=".35" stroke-dasharray="2 3"/>
+    <path d="M74 152 Q78 146 84 144 M126 152 Q122 146 116 144" fill="none" stroke="var(--muted)" stroke-opacity=".35" stroke-dasharray="2 3"/>
+    <circle cx="100" cy="134" r="1.6" fill="var(--muted)" opacity=".5"/>
+    ${line('chest', '<ellipse cx="100" cy="84" rx="37" ry="5"/>')}
+    ${line('waist', '<ellipse cx="100" cy="131" rx="25" ry="4.5"/>')}
+    ${line('hips', '<ellipse cx="100" cy="170" rx="35" ry="5"/>')}
+    ${line('arm', '<ellipse cx="58" cy="92" rx="10" ry="3" transform="rotate(-12 58 92)"/>')}
+    ${line('thigh', '<ellipse cx="85" cy="212" rx="15" ry="3.5"/>')}
+  </svg>`;
+}
+function measureGuide(active) {
+  const label = (MEASURES.find(([k]) => k === active) || [, ''])[1];
+  return `<div class="mg"><div class="mg-fig">${measureFigure(active)}</div>
+    <div class="mg-txt"><b>${label}</b><p class="note" style="margin:4px 0 0">${MEASURE_GUIDE[active].tip}</p></div></div>`;
+}
 function sheetMeasure(s) {
   const d = s.d;
   const slots = PHOTO_SLOTS.map(([k, l]) => {
@@ -1297,7 +1329,9 @@ function sheetMeasure(s) {
       `<label class="photo-add"><input type="file" accept="image/*" data-in="photoPick" data-slot="${k}" style="display:none">${icon('plus', 22)}<span>${l}</span></label>`}</div>`;
   }).join('');
   return `${sheetTop('Measurements', longDate(s.date))}
-    <p class="note" style="margin:0">All optional. Measure in the morning, relaxed, tape snug but not tight. Waist at the level of your belly button.</p>
+    <p class="note" style="margin:0">All optional. Measure in the morning before eating, with the tape level all the way round, snug on the skin but not pressing in.</p>
+    <div class="chips" role="group" aria-label="Show how to measure">${MEASURES.map(([k, l]) => `<button class="chip" data-act="msGuide" data-k="${k}" aria-pressed="${(s.guide || 'waist') === k}">${l}</button>`).join('')}</div>
+    <div id="msGuide">${measureGuide(s.guide || 'waist')}</div>
     <div class="grid2">${MEASURES.map(([k, l]) => `<label class="f">${l} (cm)<input class="input" id="ms-${k}" data-in="msF" data-f="${k}" inputmode="decimal" value="${esc(d[k] || '')}"></label>`).join('')}</div>
     <div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">Photos (optional, private to you)</div>
     <div class="photo-grid">${slots}</div>
@@ -1511,6 +1545,7 @@ const A = {
     const date = d.date || today(); const m = (S.core.measures || {})[date] || {};
     pushSheet({ type: 'measure', date, d: Object.assign({}, m), img: {}, photos: (m.photos || []).slice() });
   },
+  msGuide(d) { setMeasureGuide(d.k); },
   measureHistory() { pushSheet({ type: 'measureHistory' }); },
   measureSave() {
     const s = topSheet(); const out = {}; let any = false; let bad = false;
@@ -1816,6 +1851,13 @@ document.addEventListener('click', (ev) => {
 document.addEventListener('input', (ev) => { const el = ev.target; const fn = el.dataset && IN[el.dataset.in]; if (fn && el.type !== 'file' && el.tagName !== 'SELECT') fn(el); });
 document.addEventListener('change', (ev) => { const el = ev.target; const fn = el.dataset && IN[el.dataset.in]; if (fn && (el.type === 'file' || el.tagName === 'SELECT')) fn(el); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && topSheet()) popSheet(); });
+// Measurements: focusing a field shows how to measure that spot (updated in place so the keyboard stays open)
+function setMeasureGuide(k) {
+  const s = topSheet(); if (!s || s.type !== 'measure' || !MEASURE_GUIDE[k]) return;
+  s.guide = k; const g = $('#msGuide'); if (g) g.innerHTML = measureGuide(k);
+  document.querySelectorAll('[data-act=msGuide]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === k)));
+}
+document.addEventListener('focusin', (ev) => { const id = ev.target && ev.target.id; if (id && id.startsWith('ms-')) setMeasureGuide(id.slice(3)); });
 // Food form: re-render after serving weight changes so the right fields show
 document.addEventListener('change', (ev) => { if (ev.target.id === 'fe-sg') setTimeout(() => { if (topSheet() && topSheet().type === 'foodEdit') renderSheet(); }, 0); });
 window.addEventListener('pagehide', () => { if (Store.pending()) Store.flush(); });
