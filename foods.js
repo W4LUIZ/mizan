@@ -124,6 +124,8 @@ window.MIZAN_FOODS = [
   ["sugar", "Sugar", "Fats & extras", null, [387, 0, 100, 0], null, [["1 tsp", 4]]],
   ["dark-choc", "Dark chocolate (70–85%)", "Fats & extras", null, [598, 7.8, 45.9, 42.6], null, [["1 square", 10]]],
   ["mayo", "Mayonnaise", "Fats & extras", null, [680, 1, 0.6, 75], null, [["1 tbsp", 14]]],
+  ["mayo-light", "Mayonnaise, light", "Fats & extras", null, [233, 0.5, 6.7, 23], null, [["1 tbsp", 15]], "typical"],
+  ["lemon-juice", "Lemon juice, fresh", "Fats & extras", null, [22, 0.4, 6.9, 0.2], null, [["1 tbsp", 15], ["Juice of 1 lemon", 30]]],
   ["ketchup", "Ketchup", "Fats & extras", null, [101, 1, 27.4, 0.1], null, [["1 tbsp", 17]]],
   ["caesar-dressing", "Caesar dressing", "Fats & extras", null, [470, 2.2, 3.5, 50], null, [["1 tbsp", 15]]],
 
