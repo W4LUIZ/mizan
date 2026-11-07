@@ -20,7 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const longDate = (k) => { const d = parseKey(k); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 
-const VERSION = '2026-11-01.1';
+const VERSION = '2026-11-07.1';
 const ICON = {
   today: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   library: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -930,6 +930,7 @@ function sheetFoodEdit(s) {
     <label class="f">Group<select class="input" id="fe-group" data-in="feF" data-f="group">${GROUPS.map((g) => `<option ${d.group === g ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
     ${s.note ? `<p class="note">${esc(s.note)}</p>` : ''}
     ${isNew && d.barcode ? `<button class="btn ghost block" data-act="linkOpen">Already in the library? Link this barcode to it</button>` : ''}
+    <label class="btn ghost block" style="display:flex;gap:8px;align-items:center;justify-content:center;cursor:pointer">${s.ocr ? `<span>${esc(s.ocr)}</span>` : `${icon('doc', 20)}<span>Read label photo</span><input type="file" accept="image/*" data-in="labelPick" style="display:none">`}</label>
     <div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">The label gives values</div>
     <div class="seg" role="group"><button data-act="feBasis" data-v="100" aria-pressed="${d.basis === '100'}">Per 100 g</button><button data-act="feBasis" data-v="serving" aria-pressed="${d.basis === 'serving'}">Per serving</button></div>
     ${d.basis === 'serving' ? `<div class="grid2"><label class="f">Serving name<input class="input" id="fe-sname" data-in="feF" data-f="sName" value="${esc(d.sName)}" placeholder="1 bar"></label>
@@ -1051,6 +1052,35 @@ function setTargetsFromMacros(kcal, protein) {
 // Barcodes are stored as digits; 12-digit UPC-A becomes the matching 13-digit EAN.
 function normCode(c) { let d = String(c || '').replace(/\D/g, ''); if (d.length === 12) d = '0' + d; return d; }
 function foodByCode(code) { const c = normCode(code); return c ? allFoods().find((f) => f.barcode && normCode(f.barcode) === c) : null; }
+// On-device label reading (Tesseract, English). Files are in /ocr and only load the first time it's used.
+const OCR = {
+  worker: null, ready: false,
+  async read(file) {
+    if (!this.worker) {
+      if (!window.Tesseract) await loadScript('ocr/tesseract.min.js');
+      const base = new URL('ocr/', location.href).href;
+      this.worker = window.Tesseract.createWorker('eng', 1, { workerPath: base + 'worker.min.js', corePath: base, langPath: base.replace(/\/$/, ''), gzip: true, workerBlobURL: false });
+    }
+    const w = await this.worker; this.ready = true;
+    const img = await labelImage(file);
+    const { data } = await w.recognize(img);
+    return data.text || '';
+  }
+};
+// Label photos: shrink very large photos, upscale small ones, grayscale for cleaner text.
+function labelImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onload = () => {
+      const long = Math.max(img.width, img.height); const sc = long > 2200 ? 2200 / long : long < 1200 ? 1200 / long : 1;
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+      const x = c.getContext('2d'); x.filter = 'grayscale(1) contrast(1.3)'; x.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); res(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('image')); };
+    img.src = url;
+  });
+}
 function loadScript(src) {
   return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(el); });
 }
@@ -1167,6 +1197,34 @@ async function offLookup(code) {
     return { found: true, p: j.product };
   } catch (e) { return { found: false, offline: true }; } finally { clearTimeout(t); }
 }
+// Second source: USDA FoodData Central branded foods (mostly US products, many sold in Saudi too).
+async function usdaLookup(code) {
+  const key = (window.MIZAN_CONFIG && window.MIZAN_CONFIG.usdaKey) || 'DEMO_KEY';
+  const bare = code.replace(/^0+/, '');
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const t = setTimeout(() => { if (ctl) ctl.abort(); }, 9000);
+  try {
+    const r = await fetch('https://api.nal.usda.gov/fdc/v1/foods/search?dataType=Branded&pageSize=10&api_key=' + encodeURIComponent(key) + '&query=' + bare, { signal: ctl ? ctl.signal : undefined });
+    if (!r.ok) return { found: false };
+    const j = await r.json();
+    const hit = (j.foods || []).find((f) => String(f.gtinUpc || '').replace(/\D/g, '').replace(/^0+/, '') === bare);
+    return hit ? { found: true, f: hit } : { found: false };
+  } catch (e) { return { found: false }; } finally { clearTimeout(t); }
+}
+function titleCase(x) { return String(x || '').toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\s+/g, ' ').trim(); }
+function usdaToDraft(f, code) {
+  const n = (no) => { const x = (f.foodNutrients || []).find((z) => String(z.nutrientNumber) === no); return x && x.value != null ? Number(x.value) : null; };
+  let kcal = n('208'); if (kcal == null && n('268') != null) kcal = n('268') / 4.184;
+  const vals = { k: kcal, p: n('203'), c: n('205'), f: n('204') };
+  const d = foodToDraft(null);
+  const brand = titleCase(f.brandName || f.brandOwner || ''); const name = titleCase(f.description);
+  d.name = brand && !name.toLowerCase().includes(brand.toLowerCase()) ? brand + ' ' + name : name;
+  d.group = guessGroup([String(f.foodCategory || '').toLowerCase().replace(/\s+/g, '-')]); d.basis = '100'; d.barcode = code;
+  d.raw = { k: vals.k == null ? '' : Math.round(vals.k), p: vals.p == null ? '' : r1(vals.p), c: vals.c == null ? '' : r1(vals.c), f: vals.f == null ? '' : r1(vals.f) };
+  const sz = Number(f.servingSize); const su = String(f.servingSizeUnit || '').toLowerCase();
+  if (sz > 0 && /^(g|grm|ml|mlt)$/.test(su)) d.units = [{ l: f.householdServingFullText ? String(f.householdServingFullText).toLowerCase() : '1 serving', g: r1(sz) }];
+  return { d, missing: Object.values(vals).some((v) => v == null) };
+}
 function guessGroup(tags) {
   const t = (tags || []).join(' ');
   const rules = [[/protein-powder|whey|protein-bar|sports-nutrition|dietary-supplement/, 'Supplements'], [/chocolate|confection|biscuit|cookie|crisps|chips|candies|sweet-snack|salty-snack|wafer|cake/, 'Snacks'],
@@ -1202,14 +1260,20 @@ async function handleCode(raw) {
   s.busy = true; s.code = code; s.err = null; renderSheet();
   const res = await offLookup(code);
   if (topSheet() !== s) return; // closed while looking up
-  S.ui.sheets.pop();
   let draft; let note;
-  if (res.found) {
-    const o = offToDraft(res.p, code); draft = o.d;
-    note = o.missing ? 'Found on Open Food Facts, but some values are missing. Fill them in from the label, then save.' : 'Found on Open Food Facts. Check the numbers against the label, then save.';
+  const off = res.found ? offToDraft(res.p, code) : null;
+  let us = null;
+  if (!off || off.missing) { const u = await usdaLookup(code); if (topSheet() !== s) return; if (u.found) us = usdaToDraft(u.f, code); }
+  S.ui.sheets.pop();
+  if (off && (!off.missing || !us || us.missing)) {
+    draft = off.d;
+    note = off.missing ? 'Found on Open Food Facts, but some values are missing. Tap Read label photo or fill them in, then save.' : 'Found on Open Food Facts. Check the numbers against the label, then save.';
+  } else if (us) {
+    draft = us.d;
+    note = us.missing ? 'Found in the USDA food database, but some values are missing. Tap Read label photo or fill them in, then save.' : 'Found in the USDA food database. Check the numbers against the label (local versions can differ), then save.';
   } else {
     draft = foodToDraft(null); draft.basis = '100'; draft.barcode = code;
-    note = res.offline ? 'Couldn’t reach the food database. Enter the label once and Mizan will remember this barcode for both of you.' : 'This barcode isn’t in Open Food Facts yet. Enter the label once and Mizan will remember it for both of you.';
+    note = res.offline ? 'Couldn’t reach the food databases. Tap Read label photo to fill this in from the label. Mizan remembers this barcode for both of you.' : 'Not in Open Food Facts or the USDA database yet. Tap Read label photo to fill it in from the label. Mizan remembers this barcode for both of you.';
   }
   pushSheet({ type: 'foodEdit', id: null, d: draft, thenLog: topSheet() && topSheet().type === 'log', note });
 }
@@ -1790,6 +1854,24 @@ const IN = {
   qaF(el) { topSheet()[el.dataset.f] = el.value; },
   msF(el) { topSheet().d[el.dataset.f] = el.value; },
   pcDate(el) { const s = topSheet(); s[el.dataset.w] = el.value; s.img = {}; loadSheetPhotos(s); },
+  async labelPick(el) {
+    const file = el.files && el.files[0]; const s = topSheet(); if (!file || !s || s.type !== 'foodEdit') return;
+    s.ocr = OCR.ready ? 'Reading the label…' : 'Reading the label… (first time takes a little longer)'; renderSheet();
+    let r = null;
+    try { r = parseLabel(await OCR.read(file)); } catch (e) { console.error('label read', e); r = null; }
+    if (topSheet() !== s) return;
+    s.ocr = '';
+    if (!r || r.found < 2) { renderSheet(); toast('Couldn’t read that clearly. Try a closer, flat, well-lit photo of just the nutrition table'); return; }
+    const d = s.d; const v = (x, dp) => x == null ? '' : dp ? r1(x) : Math.round(x);
+    d.raw = { k: v(r.k), p: v(r.p, 1), c: v(r.c, 1), f: v(r.f, 1) };
+    if (r.basis === '100') {
+      d.basis = '100';
+      if (r.servingG && !d.units.some((u) => num(u.g) === r.servingG)) d.units.push({ l: '1 serving', g: r.servingG });
+    } else { d.basis = 'serving'; d.sName = d.sName || '1 serving'; d.sG = r.servingG || d.sG || ''; }
+    const miss = [['k', 'calories'], ['p', 'protein'], ['c', 'carbs'], ['f', 'fat']].filter(([k]) => d.raw[k] === '').map(([, l]) => l);
+    s.note = 'Filled in from the label photo, ' + (r.basis === '100' ? 'per 100 g' : 'per serving') + '. Check each number before saving.' + (miss.length ? ' Couldn’t read: ' + miss.join(', ') + '.' : '');
+    renderSheet();
+  },
   async photoPick(el) {
     const file = el.files && el.files[0]; const s = topSheet(); const slot = el.dataset.slot; if (!file || !s) return;
     s.img[slot] = 'loading'; renderSheet();
@@ -2049,5 +2131,5 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 // expose for testing
-window.__mizan = { S, A, Store, calcTargets, render };
+window.__mizan = { S, A, Store, calcTargets, render, OCR };
 })();
