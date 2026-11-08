@@ -20,7 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const longDate = (k) => { const d = parseKey(k); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 
-const VERSION = '2026-11-07.1';
+const VERSION = '2026-11-08.1';
 const ICON = {
   today: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   library: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -66,7 +66,7 @@ const S = {
   months: {},    // 'YYYY-MM' -> { days: { 'YYYY-MM-DD': { entries: [], workouts: [] } } } (private)
   members: [],
   partner: {},
-  ui: { view: 'today', day: today(), libTab: 'foods', libGroup: 'All', libQuery: '', sheets: [], setupStep: 0, setup: null,
+  ui: { view: 'today', day: today(), lastToday: today(), libTab: 'foods', libGroup: 'All', libQuery: '', sheets: [], setupStep: 0, setup: null,
         auth: { mode: 'signin', email: '', password: '', msg: '', busy: false }, hh: { name: '', display: '', code: '', msg: '', busy: false }, recovery: false, phase: 'loading', bootError: '' }
 };
 const clone = (o) => JSON.parse(JSON.stringify(o == null ? {} : o));
@@ -1481,11 +1481,12 @@ function sheetWeekly(s) {
     <button class="btn block" data-act="close">Done</button>`;
 }
 function maybeWeekly() {
-  if (S.ui.phase !== 'app' || !profile() || S.ui.editing || topSheet() || S.ui.viewing || S.ui.weeklyAuto) return;
+  if (S.ui.phase !== 'app' || !profile() || S.ui.editing || topSheet() || S.ui.viewing) return;
   const last = addDays(weekKey(today()), -7);
+  if (S.ui.weeklyAuto === last) return; // already shown for this week in this session
   if (!S.core.weeklySeen) { S.core.weeklySeen = last; save('core'); return; } // first run: start with next Sunday
   if (S.core.weeklySeen >= last || !weekHasData(last)) return;
-  S.ui.weeklyAuto = true; S.core.weeklySeen = last; save('core'); Store.flush();
+  S.ui.weeklyAuto = last; S.core.weeklySeen = last; save('core'); Store.flush();
   pushSheet({ type: 'weekly', start: last });
 }
 
@@ -1946,7 +1947,11 @@ window.addEventListener('pagehide', () => { if (Store.pending()) Store.flush(); 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (Store.pending()) Store.flush(); return; }
   S.partner = {};
-  if (S.ui.phase === 'app' && Store.hh && !Store.pending()) Store.loadAll().then(() => { softRender(); stravaAuto(); }, () => {});
+  // The app can stay open in the background for days: move "Today" to the real date and check for a new Sunday summary.
+  if (S.ui.phase === 'app' && S.ui.lastToday && S.ui.lastToday !== today() && S.ui.day === S.ui.lastToday) S.ui.day = today();
+  S.ui.lastToday = today();
+  setTimeout(maybeWeekly, 0);
+  if (S.ui.phase === 'app' && Store.hh && !Store.pending()) Store.loadAll().then(() => { softRender(); stravaAuto(); setTimeout(maybeWeekly, 0); }, () => {});
 });
 
 document.addEventListener('submit', async (ev) => {
