@@ -20,7 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const longDate = (k) => { const d = parseKey(k); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 
-const VERSION = '2026-11-08.1';
+const VERSION = '2026-11-18.1';
 const ICON = {
   today: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   library: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -407,7 +407,7 @@ function renderToday() {
         <span class="grow"><span class="name">${esc(e.name)}${e.out ? '<span class="badge">Out</span>' : ''}</span><span class="sub">${esc(e.detail)}</span></span>
         <span class="num">${fmt(e.k)}</span></button>`).join('');
     return `<section class="list" aria-label="${m}"><div class="meal-head"><div><h2>${m}</h2><span class="small muted">${es.length ? fmt(sum) + ' kcal' : 'Nothing logged'}</span></div>
-      <div class="row" style="gap:8px">${es.length ? `<button class="link small" data-act="saveMeal" data-meal="${m}">Save meal</button>` : ''}<button class="add-btn" data-act="openLog" data-meal="${m}" aria-label="Add to ${m}">+</button></div></div>${rows}</section>`;
+      <div class="row" style="gap:8px">${es.length ? `<button class="icon-btn" data-act="mealCopy" data-meal="${m}" aria-label="Copy ${m} to another day" style="background:none;color:var(--muted)">${icon('copy', 18)}</button><button class="link small" data-act="saveMeal" data-meal="${m}">Save meal</button>` : ''}<button class="add-btn" data-act="openLog" data-meal="${m}" aria-label="Add to ${m}">+</button></div></div>${rows}</section>`;
   }).join('');
   return `<main class="screen">
     ${dayHeader(k, dayTag(k))}${viewSwitch()}
@@ -767,11 +767,12 @@ function renderSheet(scrollTop) {
 }
 function renderSheetInner(scrollTop) {
   const el = $('#sheet'); const s = topSheet();
-  if (!s) { Scanner.stop(); el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
-  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, targets: sheetTargets, copyFrom: sheetCopyFrom, scan: sheetScan, linkCode: sheetLinkCode, measure: sheetMeasure, measureHistory: sheetMeasureHistory, photoCompare: sheetPhotoCompare, weekly: sheetWeekly }[s.type](s);
+  if (!s) { Scanner.stop(); clearTimeout(storyTimer); el.classList.remove('story-mode'); el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
+  const html = { log: sheetLog, amount: sheetAmount, quick: sheetQuick, foodEdit: sheetFoodEdit, recipe: sheetRecipe, pickIng: sheetPickIng, workout: sheetWorkout, weight: sheetWeight, entry: sheetAmount, saveMeal: sheetSaveMeal, copyMeal: sheetCopyMeal, copyTo: sheetCopyTo, targets: sheetTargets, copyFrom: sheetCopyFrom, scan: sheetScan, linkCode: sheetLinkCode, measure: sheetMeasure, measureHistory: sheetMeasureHistory, photoCompare: sheetPhotoCompare, weekly: sheetWeekly }[s.type](s);
   el.innerHTML = `<div class="in">${html}</div>`; el.hidden = false; document.body.style.overflow = 'hidden';
   if (scrollTop) el.scrollTop = 0;
   if (s.type === 'scan') Scanner.attach(); else Scanner.stop();
+  if (s.type === 'weekly') storyAfterRender(s); else { clearTimeout(storyTimer); el.classList.remove('story-mode'); }
 }
 const sheetTop = (title, sub, closeAll) => `<div class="bar-top"><button class="icon-btn" data-act="${S.ui.sheets.length > 1 && !closeAll ? 'back' : 'close'}" aria-label="${S.ui.sheets.length > 1 && !closeAll ? 'Back' : 'Close'}">${icon(S.ui.sheets.length > 1 && !closeAll ? 'back' : 'x', 20)}</button>
   <div class="grow">${sub ? `<div class="eyebrow">${esc(sub)}</div>` : ''}<h1>${esc(title)}</h1></div></div>`;
@@ -866,7 +867,7 @@ function sheetAmount(s) {
     ${controls}
     <div class="item" style="border:0;padding:4px 0"><span class="grow"><b>Eating out</b><span class="sub wrap">Counts under “Eating out” in Progress</span></span><button class="toggle" role="switch" aria-checked="${!!s.out}" aria-label="Eating out" data-act="amtOut"></button></div>
     <section class="card ring-card" id="amtMacros" style="padding:16px">${macroBlock(m)}</section>
-    <div class="stack">${editing ? `<button class="btn block" data-act="amtSave">Save changes</button><button class="btn danger block" data-act="entryDelete">Remove from ${esc(s.meal)}</button>` : `<button class="btn block" data-act="amtSave">Add to ${esc(s.meal)}</button>`}
+    <div class="stack">${editing ? `<button class="btn block" data-act="amtSave">Save changes</button><button class="btn ghost block" data-act="entryCopy">Copy to another day or meal</button><button class="btn danger block" data-act="entryDelete">Remove from ${esc(s.meal)}</button>` : `<button class="btn block" data-act="amtSave">Add to ${esc(s.meal)}</button>`}
       ${!isRecipe ? `<button class="link" data-act="openFood" data-id="${esc(s.id)}">View or edit this food</button>` : `<button class="link" data-act="openRecipe" data-id="${esc(s.id)}">View or edit this recipe</button>`}</div>`;
 }
 function macroBlock(m) {
@@ -918,7 +919,7 @@ function sheetQuick(s) {
     <label class="f">Carbs (g, optional)<input class="input" id="qa-c" data-in="qaF" data-f="c" inputmode="decimal" value="${esc(s.c || '')}"></label>
     <label class="f">Fat (g, optional)<input class="input" id="qa-f" data-in="qaF" data-f="f" inputmode="decimal" value="${esc(s.f || '')}"></label></div>
     <div class="item" style="border:0;padding:4px 0"><span class="grow"><b>Eating out</b></span><button class="toggle" role="switch" aria-checked="${s.out !== false}" aria-label="Eating out" data-act="qaOut"></button></div>
-    <div class="stack">${editing ? `<button class="btn block" data-act="qaSave">Save changes</button><button class="btn danger block" data-act="entryDelete">Remove from ${esc(s.meal)}</button>` : `<button class="btn block" data-act="qaSave">Add to ${esc(s.meal)}</button>`}</div>`;
+    <div class="stack">${editing ? `<button class="btn block" data-act="qaSave">Save changes</button><button class="btn ghost block" data-act="entryCopy">Copy to another day or meal</button><button class="btn danger block" data-act="entryDelete">Remove from ${esc(s.meal)}</button>` : `<button class="btn block" data-act="qaSave">Add to ${esc(s.meal)}</button>`}</div>`;
 }
 
 // ---- food editor (new or existing)
@@ -1023,6 +1024,25 @@ function sheetSaveMeal(s) {
     <div class="list">${es.map((e) => `<div class="item"><span class="grow"><span class="name">${esc(e.name)}</span><span class="sub">${esc(e.detail)}</span></span><span class="num">${fmt(e.k)}</span></div>`).join('')}</div>
     <label class="f">Name<input class="input" id="sm-name" data-in="smF" value="${esc(s.name || '')}" placeholder="My usual breakfast"></label>
     <button class="btn block" data-act="smSave">Save meal</button>`;
+}
+function dayLabel(k) {
+  const t = today(); if (k === t) return 'today'; if (k === addDays(t, 1)) return 'tomorrow'; if (k === addDays(t, -1)) return 'yesterday';
+  const d = parseKey(k); return DAYS[d.getDay()].slice(0, 3) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0, 3);
+}
+function ctButtonText(s) { return `Copy to ${s.meal}, ${dayLabel(s.to)}`; }
+function sheetCopyTo(s) {
+  const tot = s.items.reduce((a, e) => ({ k: a.k + e.k, p: a.p + e.p }), { k: 0, p: 0 });
+  const chips = [[today(), 'Today'], [addDays(today(), 1), 'Tomorrow'], [addDays(today(), -1), 'Yesterday']];
+  const meals = [...new Set(mealsList().concat(s.items.map((e) => e.meal)))];
+  return `${sheetTop(s.items.length > 1 ? 'Copy ' + s.fromMeal : 'Copy item', `${s.items.length} item${s.items.length > 1 ? 's' : ''} · ${fmt(tot.k)} kcal · P ${r0(tot.p)} g`)}
+    <div class="list">${s.items.map((e) => `<div class="item"><span class="grow"><span class="name">${esc(e.name)}</span><span class="sub">${esc(e.detail || '')}</span></span><span class="num">${fmt(e.k)}</span></div>`).join('')}</div>
+    <p class="note" style="margin:0">Copies these exact amounts, calories and macros.</p>
+    <div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">Day</div>
+    <div class="chips" id="ctChips">${chips.map(([k, l]) => `<button class="chip" data-act="ctDay" data-k="${k}" aria-pressed="${s.to === k}">${l}</button>`).join('')}</div>
+    <label class="f">Or pick a date<input class="input" type="date" id="ct-date" data-in="ctDate" value="${s.to}"></label>
+    <div class="f" style="font-size:13px;font-weight:700;color:var(--muted)">Meal</div>
+    <div class="chips" style="flex-wrap:wrap">${meals.map((m) => `<button class="chip" data-act="ctMeal" data-m="${esc(m)}" aria-pressed="${s.meal === m}">${esc(m)}</button>`).join('')}</div>
+    <button class="btn block" data-act="ctSave" id="ctSaveBtn">${esc(ctButtonText(s))}</button>`;
 }
 function sheetCopyMeal(s) {
   const opts = []; for (let i = 1; i <= 7; i++) { const k = addDays(S.ui.day, -i); mealsList().forEach((m) => { const es = dayData(k).entries.filter((e) => e.meal === m); if (es.length) opts.push({ k, m, es }); }); }
@@ -1454,32 +1474,142 @@ function weekSummary(start) {
   return { start, end: days[6], logged: logged.length, eaten, allow, prot, protT, protDays, tEnd, tPrev, weighIns, workouts: ws.length, minutes: ws.reduce((s, w) => s + (num(w.min) || 0), 0), runKm, burned: ws.reduce((s, w) => s + (w.credit || 0), 0), out: outMeals.size, top, waist: mLast ? S.core.measures[mLast].waist : null, waistCh };
 }
 function weekHasData(start) { for (let i = 0; i < 7; i++) { const k = addDays(start, i); if (dayData(k).entries.length || S.core.weights[k] != null) return true; } return false; }
-function sheetWeekly(s) {
-  const w = weekSummary(s.start); const p = profile();
-  const range = `${parseKey(w.start).getDate()} ${MONTHS[parseKey(w.start).getMonth()].slice(0, 3)} – ${parseKey(w.end).getDate()} ${MONTHS[parseKey(w.end).getMonth()].slice(0, 3)}`;
-  const diff = w.eaten - w.allow; const tCh = w.tEnd != null && w.tPrev != null ? w.tEnd - w.tPrev : null;
-  const goalRate = p.goal === 'lose' ? -p.pace : p.goal === 'gain' ? p.pace : 0;
-  let headline;
-  if (w.logged < 3) headline = 'A light logging week. Even rough logs on most days make next week’s summary more useful.';
-  else if (tCh != null && p.goal === 'lose') headline = tCh <= goalRate * 0.6 ? 'On track. Your trend weight went down as planned.' : tCh < 0 ? 'Moving the right way, a little slower than your goal pace.' : 'Trend weight held or rose this week. One week isn’t a verdict; keep logging and watch the next one.';
-  else headline = diff <= 0 ? 'You stayed within your allowance on average.' : 'You ate a bit above your allowance on average.';
-  const stat = (label, val, sub) => `<div class="card" style="padding:12px;margin:0"><div class="small muted" style="font-weight:700">${label}</div><div class="num" style="font-size:22px;line-height:1.2">${val}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div>`;
-  const prevStart = addDays(s.start, -7); const nextStart = addDays(s.start, 7); const thisWeek = weekKey(today());
-  return `${sheetTop('Your week', range, true)}
-    <section class="card" style="margin:0"><b>${esc(headline)}</b></section>
-    <div class="grid2">
-      ${stat('Avg eaten', w.logged ? fmt(w.eaten) + ' kcal' : '—', w.logged ? (diff <= 0 ? fmt(-diff) + ' under allowance' : fmt(diff) + ' over allowance') : 'No days logged')}
-      ${stat('Trend weight', w.tEnd != null ? r1(w.tEnd) + ' kg' : '—', tCh != null ? (tCh > 0 ? '+' : '−') + Math.abs(r1(tCh)) + ' kg this week' : w.weighIns + ' weigh-ins')}
-      ${stat('Avg protein', w.logged ? r0(w.prot) + ' g' : '—', w.logged ? 'Target hit ' + w.protDays + ' of ' + w.logged + ' days' : '')}
-      ${stat('Days logged', w.logged + ' of 7', w.weighIns + ' weigh-in' + (w.weighIns === 1 ? '' : 's'))}
-      ${stat('Training', w.workouts + ' session' + (w.workouts === 1 ? '' : 's'), [w.minutes ? r0(w.minutes) + ' min' : '', w.runKm ? r1(w.runKm) + ' km run' : '', w.burned ? fmt(w.burned) + ' kcal credited' : ''].filter(Boolean).join(' · '))}
-      ${stat('Eating out', w.out + ' meal' + (w.out === 1 ? '' : 's'), '')}
-    </div>
-    ${w.waist ? `<section class="card" style="margin:0"><div class="small muted" style="font-weight:700">Waist</div><div class="num" style="font-size:20px">${r1(w.waist)} cm${w.waistCh != null ? ` <span class="small" style="color:${w.waistCh <= 0 ? 'var(--good)' : 'var(--bad)'}">${w.waistCh > 0 ? '+' : '−'}${Math.abs(r1(w.waistCh))} cm</span>` : ''}</div></section>` : ''}
-    ${w.top.length ? `<div class="small muted" style="font-weight:700">Most logged</div><div class="list">${w.top.map(([n, c]) => `<div class="item"><span class="grow name">${esc(n)}</span><span class="small muted">${c}×</span></div>`).join('')}</div>` : ''}
-    <div class="row" style="justify-content:space-between"><button class="link" data-act="weekNav" data-k="${prevStart}">← Earlier week</button>${nextStart < thisWeek ? `<button class="link" data-act="weekNav" data-k="${nextStart}">Later week →</button>` : ''}</div>
-    <button class="btn block" data-act="close">Done</button>`;
+// ================================================================= WEEKLY STORY (Sunday summary as animated slides)
+const STORY_MS = 6500;
+let storyTimer = null;
+const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function weekCoach(w) {
+  const p = profile(); const items = [];
+  const warn = (title, text) => items.push({ tone: 'warn', title, text });
+  const good = (title, text) => items.push({ tone: 'good', title, text });
+  if (w.logged < 4) warn('Log more days', `Only ${w.logged} of 7 days were logged, so this week’s numbers are rough. Aim for at least 5, even quick estimates.`);
+  if (w.logged >= 2) {
+    const diff = w.eaten - w.allow;
+    if (diff > 150) warn('Watch the calories', `You averaged ${fmt(diff)} kcal a day over your allowance. Trimming sauces, sweet drinks and eating-out portions is the easiest way to close it.`);
+    else if (diff < -500) warn('You may be under-eating', `You averaged ${fmt(-diff)} kcal a day under your allowance. With your training, that can slow recovery and cost muscle. Eat closer to your target.`);
+    else good('Calories on point', diff <= 0 ? `You stayed ${fmt(-diff)} kcal a day under your allowance on average.` : `Only ${fmt(diff)} kcal a day over your allowance on average. Close enough.`);
+    const short = w.protT - w.prot;
+    if (w.prot >= w.protT * 0.95) good('Protein nailed', `${r0(w.prot)} g a day against a ${r0(w.protT)} g target. That protects your muscle while you lose fat.`);
+    else warn('Push protein up', `${r0(w.prot)} g a day against ${r0(w.protT)} g: about ${r0(short)} g short. A scoop of protein (about 27 g) or an extra palm of chicken closes most of it.`);
+  }
+  if (w.workouts >= 4) good('Training strong', `${w.workouts} sessions${w.minutes ? ', ' + r0(w.minutes) + ' minutes' : ''}${w.runKm ? ', ' + r1(w.runKm) + ' km run' : ''}. Keep it up.`);
+  else if (w.workouts >= 2) warn('Room for more training', `${w.workouts} sessions this week. Getting back to your usual 4 or more keeps the calorie math working for you.`);
+  else warn('Get moving again', `${w.workouts} session${w.workouts === 1 ? '' : 's'} this week. Even short sessions count; plan the next 3 now.`);
+  const tCh = w.tEnd != null && w.tPrev != null ? w.tEnd - w.tPrev : null;
+  if (tCh != null && p.goal === 'lose') {
+    if (tCh <= -1.5 * p.pace) warn('Losing a bit fast', `Trend weight dropped ${Math.abs(r1(tCh))} kg, faster than your ${p.pace} kg goal. Add a little food on training days to protect muscle.`);
+    else if (tCh <= -0.5 * p.pace) good('Weight trend on track', `Trend weight is down ${Math.abs(r1(tCh))} kg, right around your ${p.pace} kg a week goal.`);
+    else if (tCh < 0) warn('A little slower than plan', `Trend weight is down ${Math.abs(r1(tCh))} kg. Normal week to week, but tightening calories slightly would bring it to plan.`);
+    else warn('Trend held or rose', `Trend weight ${tCh > 0 ? 'rose ' + r1(tCh) + ' kg' : 'held steady'}. One week isn’t a verdict; water and salt move it. Focus on calories this week.`);
+  }
+  const warns = items.filter((x) => x.tone === 'warn').length;
+  const verdict = warns === 0 ? { emoji: '🏆', title: 'You’re on the right track', sub: 'Keep doing exactly what you’re doing.' }
+    : warns === 1 ? { emoji: '💪', title: 'Solid week', sub: 'One thing to tweak and you’re golden.' }
+    : { emoji: '🎯', title: 'Time to refocus', sub: 'A few small fixes will get you back on plan.' };
+  return { verdict, items };
 }
+function storySlides(start) {
+  const w = weekSummary(start); const p = profile(); const t = S.core.targets;
+  const days = []; for (let i = 0; i < 7; i++) days.push(addDays(start, i));
+  const range = `${parseKey(w.start).getDate()} ${MONTHS[parseKey(w.start).getMonth()].slice(0, 3)} – ${parseKey(w.end).getDate()} ${MONTHS[parseKey(w.end).getMonth()].slice(0, 3)}`;
+  const coach = weekCoach(w);
+  const cnt = (v, dec) => `<span class="num" data-count="${v}" data-dec="${dec || 0}">${dec ? r1(v) : fmt(v)}</span>`;
+  const st = (i) => `style="--i:${i}"`;
+  const slides = [];
+  // 1. Intro
+  slides.push({ auto: true, html: `<div class="st-eyebrow" ${st(0)}>Your week in review</div><div class="st-huge" ${st(1)}>${range}</div>
+    <div class="st-big" ${st(2)}>${cnt(w.logged)} <span class="st-unit">of 7 days logged</span></div>
+    <div class="st-sub" ${st(3)}>${w.logged >= 6 ? 'Nearly perfect logging. Let’s see how it went 👀' : w.logged >= 4 ? 'Good logging week. Let’s see how it went 👀' : 'A lighter logging week. Here’s what we have 👀'}</div>` });
+  // 2. Calories
+  const vals = days.map((k) => ({ k, kcal: totalsFor(k).k, allow: baseFor(k).kcal + exerciseFor(k) }));
+  const mx = Math.max(...vals.map((v) => Math.max(v.kcal, v.allow)), 1);
+  const bars = vals.map((v, i) => `<div class="st-barcol"><div class="st-bartrack"><i class="st-allow" style="bottom:${v.allow / mx * 100}%"></i><b style="height:${v.kcal / mx * 100}%;--d:${0.4 + i * 0.08}s;background:${v.kcal > v.allow + 100 ? 'var(--st-warn)' : 'var(--st-good)'}"></b></div><span>${DAYS[parseKey(v.k).getDay()][0]}</span></div>`).join('');
+  const diff = w.eaten - w.allow;
+  slides.push({ auto: true, html: `<div class="st-eyebrow" ${st(0)}>Calories</div><div class="st-big" ${st(1)}>${cnt(w.eaten)} <span class="st-unit">kcal a day</span></div>
+    <div class="st-sub" ${st(2)}>${w.logged ? (diff <= 0 ? `${fmt(-diff)} under your allowance 🙌` : `${fmt(diff)} over your allowance`) : 'No days logged'}</div>
+    <div class="st-bars" ${st(3)}>${bars}</div><div class="st-legend" ${st(4)}><i></i> your allowance that day</div>` });
+  // 3. Protein
+  const ratio = w.protT ? clamp(w.prot / w.protT, 0, 1) : 0; const RC = 2 * Math.PI * 70;
+  slides.push({ auto: true, html: `<div class="st-eyebrow" ${st(0)}>Protein</div>
+    <div class="st-ring" ${st(1)}><svg viewBox="0 0 160 160" width="190" height="190"><circle cx="80" cy="80" r="70" class="st-ring-bg"/><circle cx="80" cy="80" r="70" class="st-ring-fg" style="--len:${RC};--off:${RC * (1 - ratio)}" stroke-dasharray="${RC}" stroke-dashoffset="${RC * (1 - ratio)}" transform="rotate(-90 80 80)"/></svg>
+      <div class="st-ring-in">${cnt(w.prot)}<span>g a day</span></div></div>
+    <div class="st-sub" ${st(2)}>Target ${r0(w.protT)} g · hit on <b>${w.protDays} of ${w.logged}</b> logged days</div>` });
+  // 4. Training
+  slides.push({ auto: true, html: `<div class="st-eyebrow" ${st(0)}>Training</div><div class="st-huge" ${st(1)}>${cnt(w.workouts)} <span class="st-unit">session${w.workouts === 1 ? '' : 's'}</span></div>
+    <div class="st-tiles">${[[w.minutes, 'minutes', '⏱️'], [w.runKm, 'km run', '🏃'], [w.burned, 'kcal earned', '🔥']].map(([v, l, e], i) => `<div class="st-tile" ${st(2 + i)}><div class="st-emoji">${e}</div><div class="st-mid">${cnt(l === 'km run' ? r1(v) : r0(v), l === 'km run' && r1(v) % 1 ? 1 : 0)}</div><div class="st-small">${l}</div></div>`).join('')}</div>` });
+  // 5. Weight
+  const series = trendSeries(); const at = (k) => { let v = null; series.forEach((x) => { if (x.k <= k && x.t != null) v = x.t; }); return v; };
+  const pts = [addDays(start, -1)].concat(days).map(at).filter((x) => x != null);
+  const tCh = w.tEnd != null && w.tPrev != null ? w.tEnd - w.tPrev : null;
+  let spark = '';
+  if (pts.length >= 2) {
+    const lo = Math.min(...pts); const hi = Math.max(...pts); const span = Math.max(hi - lo, 0.2);
+    const xy = pts.map((v, i) => [10 + i * (280 / (pts.length - 1)), 10 + (1 - (v - lo) / span) * 80]);
+    const d = xy.map(([x, y], i) => (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join(' ');
+    spark = `<svg class="st-spark" viewBox="0 0 300 100" width="100%" height="110"><path d="${d}" pathLength="1"/><circle cx="${xy[xy.length - 1][0]}" cy="${xy[xy.length - 1][1]}" r="6"/></svg>`;
+  }
+  slides.push({ auto: true, html: `<div class="st-eyebrow" ${st(0)}>Trend weight</div>
+    <div class="st-huge" ${st(1)}>${w.tEnd != null ? cnt(w.tEnd, 1) + ' <span class="st-unit">kg</span>' : '—'}</div>
+    <div class="st-pill ${tCh != null && tCh <= 0 ? 'good' : 'warn'}" ${st(2)}>${tCh != null ? (tCh > 0 ? '▲ +' : '▼ −') + Math.abs(r1(tCh)) + ' kg this week' : w.weighIns + ' weigh-ins'}</div>
+    <div ${st(3)} class="st-fade">${spark}</div>
+    <div class="st-sub" ${st(4)}>${w.weighIns} weigh-in${w.weighIns === 1 ? '' : 's'}${p.goalWeight && w.tEnd ? ` · ${r1(Math.max(0, w.tEnd - p.goalWeight))} kg to your ${r1(p.goalWeight)} kg goal` : ''}</div>` });
+  // 6. Highlights
+  slides.push({ auto: true, html: `<div class="st-eyebrow" ${st(0)}>Highlights</div>
+    <div class="st-tiles">
+      <div class="st-tile" ${st(1)}><div class="st-emoji">🍽️</div><div class="st-mid">${cnt(w.out)}</div><div class="st-small">meal${w.out === 1 ? '' : 's'} out</div></div>
+      ${w.waist ? `<div class="st-tile" ${st(2)}><div class="st-emoji">📏</div><div class="st-mid">${cnt(w.waist, 1)}</div><div class="st-small">cm waist${w.waistCh != null ? ` (${w.waistCh > 0 ? '+' : '−'}${Math.abs(r1(w.waistCh))})` : ''}</div></div>` : `<div class="st-tile" ${st(2)}><div class="st-emoji">⚖️</div><div class="st-mid">${cnt(w.weighIns)}</div><div class="st-small">weigh-ins</div></div>`}
+    </div>
+    ${w.top.length ? `<div class="st-eyebrow" ${st(3)} style="margin-top:18px">Your most logged</div><ol class="st-top">${w.top.map(([n, c], i) => `<li ${st(4 + i)}><span>${i + 1}</span><b>${esc(n)}</b><em>${c}×</em></li>`).join('')}</ol>` : ''}` });
+  // 7. Coach
+  slides.push({ auto: false, html: `<div class="st-eyebrow" ${st(0)}>Coach’s verdict</div>
+    <div class="st-verdict" ${st(1)}><div class="st-vemoji">${coach.verdict.emoji}</div><div><div class="st-mid">${coach.verdict.title}</div><div class="st-small">${coach.verdict.sub}</div></div></div>
+    <div class="st-tips">${coach.items.map((x, i) => `<div class="st-tip ${x.tone}" ${st(2 + i)}><b>${x.tone === 'good' ? '✓' : '!'} ${esc(x.title)}</b><span>${esc(x.text)}</span></div>`).join('')}</div>` });
+  // 8. Targets
+  const c = checkinCalc(); const done = S.core.checkins[weekKey(today())];
+  const isCurrent = start === addDays(weekKey(today()), -7);
+  let rec;
+  if (c.ready && isCurrent && !done && Math.abs(c.suggested - c.current) >= 20) {
+    rec = `<div class="st-sub" ${st(1)}>Your real burn works out to about <b>${fmt(c.expend)} kcal</b> a day. To keep losing ${p.pace} kg a week:</div>
+      <div class="st-target" ${st(2)}><div class="st-small">Suggested base</div><div class="st-huge">${cnt(c.suggested)} <span class="st-unit">kcal</span></div><div class="st-small">now ${fmt(c.current)} kcal</div></div>
+      <div class="row" ${st(3)} style="gap:10px;position:relative;z-index:3"><button class="btn ghost grow st-btn2" data-act="checkin" data-apply="0">Keep ${fmt(c.current)}</button><button class="btn grow st-btn" data-act="checkin" data-apply="1" data-to="${c.suggested}">Use ${fmt(c.suggested)}</button></div>`;
+  } else {
+    const why = done ? (done.applied ? `Updated this week to ${fmt(done.to)} kcal.` : 'You kept your target at this week’s check-in.') : c.ready ? 'Your numbers line up with your results, so no change is needed.' : `Mizan starts tuning these after 2 weeks of logging and 8 weigh-ins (you have ${c.daysLogged} days and ${c.ws} weigh-ins in the last 2 weeks).`;
+    rec = `<div class="st-sub" ${st(1)}>${why}</div>
+      <div class="st-target" ${st(2)}><div class="st-small">Base calories</div><div class="st-huge">${cnt(t.kcal)} <span class="st-unit">kcal</span></div><div class="st-small">plus the exercise calories you earn</div></div>`;
+  }
+  const macroRow = `<div class="st-macros" ${st(4)}>${[['Protein', t.protein, 'var(--p)'], ['Carbs', t.carbs, 'var(--c)'], ['Fat', t.fat, 'var(--f)']].map(([l, v, col]) => `<div><i style="background:${col}"></i><b>${r0(v)} g</b><span>${l}</span></div>`).join('')}</div>`;
+  const prevStart = addDays(start, -7); const nextStart = addDays(start, 7);
+  slides.push({ auto: false, html: `<div class="st-eyebrow" ${st(0)}>Next week’s targets</div>${rec}${macroRow}
+    ${w.prot < w.protT * 0.95 && w.logged ? `<div class="st-small" ${st(5)} style="margin-top:6px">🎯 Make protein the priority: build each meal around it first.</div>` : ''}
+    <div class="row st-nav" ${st(6)}><button class="link" data-act="weekNav" data-k="${prevStart}">← Earlier week</button>${nextStart <= addDays(weekKey(today()), -7) ? `<button class="link" data-act="weekNav" data-k="${nextStart}">Later week →</button>` : ''}</div>
+    <button class="btn block st-btn" ${st(7)} style="position:relative;z-index:3" data-act="close">Done</button>` });
+  return { slides, range };
+}
+function sheetWeekly(s) {
+  const { slides, range } = storySlides(s.start); s.n = slides.length; s.i = clamp(s.i || 0, 0, slides.length - 1);
+  const sl = slides[s.i]; s.auto = sl.auto;
+  return `<div class="story" data-week="${s.start}">
+    <div class="st-progress">${slides.map((x, i) => `<i class="${i < s.i ? 'done' : i === s.i ? 'now' + (sl.auto && !reducedMotion() ? ' run' : '') : ''}" style="--dur:${STORY_MS}ms"><b></b></i>`).join('')}</div>
+    <div class="st-head"><span>Mizan · ${range}</span><button class="st-x" data-act="close" aria-label="Close summary">${icon('x', 22)}</button></div>
+    <div class="st-tap left" data-act="storyPrev" aria-hidden="true"></div><div class="st-tap right" data-act="storyNext" aria-hidden="true"></div>
+    <section class="st-slide" aria-live="polite">${sl.html}</section>
+    <div class="st-hint">${s.i < slides.length - 1 ? 'Tap to continue' : ''}</div></div>`;
+}
+function storyAfterRender(s) {
+  clearTimeout(storyTimer); storyTimer = null;
+  const el = $('#sheet'); el.classList.add('story-mode');
+  const reduce = reducedMotion();
+  el.querySelectorAll('[data-count]').forEach((n) => {
+    const to = Number(n.dataset.count) || 0; const dec = Number(n.dataset.dec) || 0;
+    const show = (v) => { n.textContent = dec ? v.toFixed(dec) : fmt(v); };
+    if (reduce) { show(to); return; }
+    const t0 = performance.now(); const dur = 1100; show(0);
+    const step = (now) => { const x = Math.min(1, (now - t0) / dur); show(to * (1 - Math.pow(1 - x, 3))); if (x < 1 && document.body.contains(n)) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+  if (s.auto && !reduce && s.i < s.n - 1) storyTimer = setTimeout(() => { if (topSheet() === s && !document.hidden) { s.i++; renderSheet(); } }, STORY_MS);
+}
+
 function maybeWeekly() {
   if (S.ui.phase !== 'app' || !profile() || S.ui.editing || topSheet() || S.ui.viewing) return;
   const last = addDays(weekKey(today()), -7);
@@ -1556,6 +1686,25 @@ const A = {
   pickRecipe(d) { openAmount('recipe', d.id, { qty: 1 }); },
   quickAdd() { pushSheet({ type: 'quick', meal: topSheet().meal, out: true }); },
   copyMeal() { pushSheet({ type: 'copyMeal', meal: topSheet().meal }); },
+  entryCopy() {
+    const s = topSheet(); const day = s.day || S.ui.day;
+    const e = dayData(day).entries.find((x) => x.id === s.entryId); if (!e) return;
+    pushSheet({ type: 'copyTo', items: [clone(e)], to: today(), meal: e.meal, fromMeal: e.meal });
+  },
+  mealCopy(d) {
+    const es = dayData(S.ui.day).entries.filter((e) => e.meal === d.meal); if (!es.length) return;
+    S.ui.sheets = []; pushSheet({ type: 'copyTo', items: es.map(clone), to: S.ui.day === today() ? addDays(today(), 1) : today(), meal: d.meal, fromMeal: d.meal });
+  },
+  ctDay(d) { const s = topSheet(); s.to = d.k; renderSheet(); },
+  ctMeal(d) { const s = topSheet(); s.meal = d.m; renderSheet(); },
+  ctSave() {
+    const s = topSheet(); if (!/^\d{4}-\d{2}-\d{2}$/.test(s.to || '')) { toast('Pick a date'); return; }
+    const dd = dayData(s.to, true);
+    s.items.forEach((e) => dd.entries.push(Object.assign(clone(e), { id: uid(), meal: s.meal })));
+    saveDay(s.to);
+    toast(`Copied ${s.items.length > 1 ? s.items.length + ' items' : s.items[0].name} to ${s.meal}, ${dayLabel(s.to)}`);
+    closeSheets();
+  },
   copyPick(d) {
     const o = copyOptions()[num(d.i)]; const s = topSheet(); const dd = dayData(S.ui.day, true);
     o.es.forEach((e) => dd.entries.push(Object.assign({}, e, { id: uid(), meal: s.meal })));
@@ -1638,7 +1787,9 @@ const A = {
   },
   pcSlot(d) { const s = topSheet(); s.slot = d.v; s.img = {}; loadSheetPhotos(s); },
   weeklyOpen() { const last = addDays(weekKey(today()), -7); pushSheet({ type: 'weekly', start: last }); },
-  weekNav(d) { topSheet().start = d.k; renderSheet(true); },
+  weekNav(d) { const s = topSheet(); s.start = d.k; s.i = 0; renderSheet(true); },
+  storyNext() { const s = topSheet(); if (s.i < s.n - 1) { s.i++; renderSheet(); } },
+  storyPrev() { const s = topSheet(); if (s.i > 0) { s.i--; renderSheet(); } },
   qaOut() { const s = topSheet(); s.out = s.out === false ? true : false; renderSheet(); },
   qaSave() {
     const s = topSheet(); if (!(num(s.k) > 0)) { toast('Enter the calories'); return; }
@@ -1738,7 +1889,7 @@ const A = {
     const wk = weekKey(today()); const t = S.core.targets;
     if (d.apply === '1') { const to = num(d.to); setTargetsFromMacros(to, t.protein); S.core.checkins[wk] = { applied: true, from: t.kcal, to }; }
     else S.core.checkins[wk] = { applied: false, to: t.kcal };
-    save('core'); render(); toast('Check-in done');
+    save('core'); render(); toast(d.apply === '1' ? 'New target set: ' + fmt(num(d.to)) + ' kcal' : 'Check-in done');
   },
   // settings
   editProfile() { S.ui.setup = setupDefaults(); S.ui.setup.weight = r1(latestWeight()); S.ui.setupStep = 0; S.ui.editing = true; renderEditProfile(); },
@@ -1853,6 +2004,11 @@ const IN = {
     renderSheet();
   },
   qaF(el) { topSheet()[el.dataset.f] = el.value; },
+  ctDate(el) {
+    const s = topSheet(); if (!el.value) return; s.to = el.value;
+    document.querySelectorAll('#ctChips .chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === s.to)));
+    const b = $('#ctSaveBtn'); if (b) b.textContent = ctButtonText(s);
+  },
   msF(el) { topSheet().d[el.dataset.f] = el.value; },
   pcDate(el) { const s = topSheet(); s[el.dataset.w] = el.value; s.img = {}; loadSheetPhotos(s); },
   async labelPick(el) {
