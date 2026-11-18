@@ -20,7 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const longDate = (k) => { const d = parseKey(k); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 
-const VERSION = '2026-11-18.1';
+const VERSION = '2026-11-18.2';
 const ICON = {
   today: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   library: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -368,7 +368,7 @@ function renderPartnerToday(uid) {
     const meals = mealNames.map((meal) => {
       const es = dd.entries.filter((e) => e.meal === meal);
       return `<section class="list" aria-label="${esc(meal)}"><div class="meal-head"><div><h2>${esc(meal)}</h2><span class="small muted">${fmt(es.reduce((a, e) => a + e.k, 0))} kcal</span></div>
-        <button class="pill" data-act="copyFrom" data-meal="${esc(meal)}">Copy meal</button></div>
+        <button class="pill" data-act="copyFrom" data-meal="${esc(meal)}">Copy meal</button></div>${mealMacros(es)}
         ${es.map((e) => `<div class="item"><span class="grow"><span class="name">${esc(e.name)}${e.out ? '<span class="badge">Out</span>' : ''}</span><span class="sub">${esc(e.detail)} · ${fmt(e.k)} kcal</span></span>
           <button class="add-btn" data-act="copyFrom" data-id="${esc(e.id)}" aria-label="Copy ${esc(e.name)} to my log">${icon('copy', 18)}</button></div>`).join('')}</section>`;
     }).join('');
@@ -380,6 +380,10 @@ function renderPartnerToday(uid) {
       <p class="note" style="margin:0">Tap the copy button on a food, or Copy meal, to add it to your own log. ${esc(name)}'s weight and targets stay private.</p>`;
   }
   return `<main class="screen">${dayHeader(k, 'Read only')}${viewSwitch()}${body}</main>`;
+}
+function mealMacros(es) {
+  const t = es.reduce((a, e) => ({ p: a.p + (e.p || 0), c: a.c + (e.c || 0), f: a.f + (e.f || 0) }), { p: 0, c: 0, f: 0 });
+  return `<div class="meal-mac" aria-label="Protein ${r0(t.p)} grams, carbs ${r0(t.c)} grams, fat ${r0(t.f)} grams"><span><i style="background:var(--p)"></i>P <b>${r0(t.p)}</b> g</span><span><i style="background:var(--c)"></i>C <b>${r0(t.c)}</b> g</span><span><i style="background:var(--f)"></i>F <b>${r0(t.f)}</b> g</span></div>`;
 }
 function renderToday() {
   if (S.ui.viewing && sharingPartners().some((m) => m.user_id === S.ui.viewing)) return renderPartnerToday(S.ui.viewing);
@@ -407,7 +411,7 @@ function renderToday() {
         <span class="grow"><span class="name">${esc(e.name)}${e.out ? '<span class="badge">Out</span>' : ''}</span><span class="sub">${esc(e.detail)}</span></span>
         <span class="num">${fmt(e.k)}</span></button>`).join('');
     return `<section class="list" aria-label="${m}"><div class="meal-head"><div><h2>${m}</h2><span class="small muted">${es.length ? fmt(sum) + ' kcal' : 'Nothing logged'}</span></div>
-      <div class="row" style="gap:8px">${es.length ? `<button class="icon-btn" data-act="mealCopy" data-meal="${m}" aria-label="Copy ${m} to another day" style="background:none;color:var(--muted)">${icon('copy', 18)}</button><button class="link small" data-act="saveMeal" data-meal="${m}">Save meal</button>` : ''}<button class="add-btn" data-act="openLog" data-meal="${m}" aria-label="Add to ${m}">+</button></div></div>${rows}</section>`;
+      <div class="row" style="gap:8px">${es.length ? `<button class="icon-btn" data-act="mealCopy" data-meal="${m}" aria-label="Copy ${m} to another day" style="background:none;color:var(--muted)">${icon('copy', 18)}</button><button class="link small" data-act="saveMeal" data-meal="${m}">Save meal</button>` : ''}<button class="add-btn" data-act="openLog" data-meal="${m}" aria-label="Add to ${m}">+</button></div></div>${es.length ? mealMacros(es) : ''}${rows}</section>`;
   }).join('');
   return `<main class="screen">
     ${dayHeader(k, dayTag(k))}${viewSwitch()}

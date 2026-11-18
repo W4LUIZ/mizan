@@ -239,6 +239,9 @@ label.f { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font
 .st-nav { justify-content: space-between; position: relative; z-index: 3; } .st-nav .link { color: #fff; opacity: .8; }
 .st-fade { animation: st-up .6s both; }
 @media (prefers-reduced-motion: reduce) { .story *, .story *::before { animation: none !important; } .st-spark path { stroke-dashoffset: 0; } }
+.meal-mac { display: flex; gap: 14px; margin: -2px 0 8px; font-size: 12.5px; color: var(--muted); font-weight: 600; flex-wrap: wrap; }
+.meal-mac span { display: inline-flex; align-items: center; gap: 4px; } .meal-mac b { color: var(--fg); font-weight: 800; }
+.meal-mac i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 @keyframes scanline { from { transform: translateY(-28px); } to { transform: translateY(28px); } }
 @media (prefers-reduced-motion: reduce) { .scanframe::after { animation: none; } }
 .loading { min-height: 60vh; display: grid; place-items: center; color: var(--muted); }
@@ -255,10 +258,10 @@ form { margin: 0; }
 <div id="sheet" class="sheet" role="dialog" aria-modal="true" hidden></div>
 <div id="toast" class="toast" hidden></div>
 
-<script src="supabase.js?v=2026-11-18.1"></script>
-<script src="config.js?v=2026-11-18.1"></script>
-<script src="foods.js?v=2026-11-18.1"></script>
-<script src="label.js?v=2026-11-18.1"></script>
-<script src="app.js?v=2026-11-18.1"></script>
+<script src="supabase.js?v=2026-11-18.2"></script>
+<script src="config.js?v=2026-11-18.2"></script>
+<script src="foods.js?v=2026-11-18.2"></script>
+<script src="label.js?v=2026-11-18.2"></script>
+<script src="app.js?v=2026-11-18.2"></script>
 </body>
 </html>
